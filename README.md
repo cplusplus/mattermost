@@ -21,6 +21,14 @@ of the problem. Be sure to include your Mattermost username when reporting accou
 
 # Common issues
 
+## How to user Mattermost
+General Mattermost documentation is available at https://docs.mattermost.com.
+The
+[Welcome to Mattermost](https://docs.mattermost.com/guides/welcome-to-mattermost.html)
+and
+[Mattermost Channels](https://docs.mattermost.com/guides/channels.html)
+documentation is likely to be the most useful for most users.
+
 ## How to register an account
 To create an account, an invite code is required.
 A link with an embedded invite code can be found on the "Real-time Communication Tools" page of the
