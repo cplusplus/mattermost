@@ -21,7 +21,7 @@ of the problem. Be sure to include your Mattermost username when reporting accou
 
 # Common issues
 
-## How to user Mattermost
+## How to use Mattermost
 General Mattermost documentation is available at https://docs.mattermost.com.
 The
 [Welcome to Mattermost](https://docs.mattermost.com/guides/welcome-to-mattermost.html)
