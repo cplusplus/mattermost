@@ -20,7 +20,7 @@ Before reporting an issue, please note the following:
   Links to the wiki are intentionally not provided here.
   Open the link on that page to register an account.
 
-User name (if known/assigned): 
+Username (if known/assigned): 
 
 Email address: 
 
