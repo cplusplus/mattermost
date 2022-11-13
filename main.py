@@ -25,12 +25,14 @@ class PaperIndex:
         self._cache_object = EtagCache(dir_path=os.getenv('PAPER_INDEX_CACHE'))
         self._index = None
         self._timestamp_of_last_refresh = None
+        self._try_refresh_index()
 
     def _try_refresh_index(self):
         headers = self._cache_object.add_etag(self.request_method, {}, self.repository_url)
         response = requests.request(self.request_method, self.repository_url, headers=headers)
         self._cache_object.save_etag(response)
         self._rebuild_index(self._cache_object.add_read_cache(response))
+        self._rebuild_search_index()
 
     def _try_refresh_index_if_needed(self):
         now = datetime.now()
@@ -75,6 +77,41 @@ class PaperIndex:
         return (key, self._index[reference][key]) \
             if reference in self._index and key in self._index[reference] \
             else (reference_or_id, None)
+
+    def search(self, keywords: List, type: str | None = None):
+        def matches_search(entry):
+            return all([keyword in entry['keywords'] for keyword in keywords]) and \
+                (type is None or entry['type'] == type)
+
+        result = [entry for entry in self._search_index if matches_search(entry)]
+        return sorted(result, key=lambda entry: entry['date'], reverse=True)
+
+    def _rebuild_search_index(self):
+        def get_date(entry):
+            date_value = entry['date'] if 'date' in entry else ''
+            accepted_formats = ['%Y-%m-%d', '%d %b %Y', '%d %B %Y', '%B %Y', '%d %B, %Y', '%d %b, %Y']
+            for accepted_format in accepted_formats:
+                try:
+                    return datetime.strptime(date_value, accepted_format)
+                except ValueError:
+                    pass
+            return datetime.strptime('1970-01-01', '%Y-%m-%d')
+
+        self._search_index = [
+            {
+                'id': reference,
+                'type': document[document['_']]['type'],
+                'date': get_date(document[document['_']]),
+                'keywords': ' '.join(['{} {} {} {} {}'.format(
+                    key,
+                    data['title'],
+                    data['section'] if 'section' in data else '',
+                    data['submitter'] if 'submitter' in data else '',
+                    data['author'] if 'author' in data else '',
+                ) for key, data in document.items()
+                    if key != '_']).lower()
+            }
+            for reference, document in self._index.items()]
 
 
 class MessageFormatter(ABC):
@@ -196,7 +233,9 @@ class PaperMessageFormatter(MessageFormatter):
             text += f' {self._get_audience()}:'
         text += f' {title}'
 
-        extra_info = f' by {self._get_authors()}'
+        extra_info = ''
+        if 'author' in self._info:
+            extra_info += f' by {self._get_authors()}'
 
         if 'date' in self._info:
             date = self._info['date']
@@ -398,6 +437,7 @@ class ChatCommandHandler:
         command_handlers = {
             'help': self._do_help,
             'kill': self._do_kill,
+            'search': self._do_search,
             '_': self._handle_paper_request,
         }
         handler = command_handlers[command if command in command_handlers else '_']
@@ -410,7 +450,8 @@ class ChatCommandHandler:
         print(f'Help requested by {display_name} - {nickname} ({username})')
 
         username_of_bot = self._chat_service.me()['username']
-        reply = f'Usage: "@{username_of_bot} <Nxxxx|Pxxxx|PxxxxRx|Dxxxx|DxxxxRx|CWGxxx|EWGxxx|LWGxxx|LEWGxxx|FSxxx>"\n' \
+        reply = f':book: | Usage: "@{username_of_bot} search [papers|issues|everything] <keywords>"\n' \
+                f'\t\t\t\tor "@{username_of_bot} <Nxxxx|Pxxxx|PxxxxRx|Dxxxx|DxxxxRx|CWGxxx|EWGxxx|LWGxxx|LEWGxxx|FSxxx>"\n' \
                 f'\n' \
                 f'{username_of_bot} will also lookup any paper posted in square brackets, even without being mentioned.'
 
@@ -424,9 +465,12 @@ class ChatCommandHandler:
 
         reply_components = []
         for requested_reference in deduplicate(references):
-            reply_components.append(self._formatter_factory.create_from_info(
-                *self._paper_index.fetch_info_for(requested_reference))
-                                    .format_message())
+            try:
+                reply_components.append(self._formatter_factory.create_from_info(
+                    *self._paper_index.fetch_info_for(requested_reference))
+                                        .format_message())
+            except KeyError:
+                print(f'Formatting document {requested_reference} failed')
 
         username = user['username']
         nickname = user['nickname'] or '(none)'
@@ -480,6 +524,44 @@ class ChatCommandHandler:
 
         print(f'Terminating paperbot after user request from {display_name} - {nickname} ({username})')
         sys.exit(1)
+
+    def _do_search(self, tokens, post, user):
+        print(tokens)
+
+        if tokens[2] == 'papers':
+            self._do_search_impl(tokens[3:], 'paper', post, user)
+        elif tokens[2] == 'issues':
+            self._do_search_impl(tokens[3:], 'issue', post, user)
+        elif tokens[2] == 'everything':
+            self._do_search_impl(tokens[3:], None, post, user)
+        else:
+            self._do_search_impl(tokens[2:], None, post, user)
+
+    def _do_search_impl(self, keywords, type, post, user):
+        results = self._paper_index.search(keywords, type=type)
+        displayed_results = results[:15] if len(results) > 15 else results
+
+        if len(displayed_results) == 0:
+            self._chat_service.reply_to(post, 'No results found.')
+            return
+
+        try:
+            result_list = '\n'.join([
+                '1. {}'.format(
+                    self._formatter_factory.create_from_info(
+                        *self._paper_index.fetch_info_for(result['id']))
+                    .format_message())
+                for result in displayed_results])
+
+            reply = f'{len(results)} results for your query'
+            if len(results) != len(displayed_results):
+                reply += f', showing most recent {len(displayed_results)}'
+            reply += ':\n' + result_list
+
+            self._chat_service.reply_to(post, reply)
+        except KeyError:
+            print(f'Formatting of one or multiple documents failed', displayed_results)
+            self._chat_service.reply_to(post, 'An error occurred.')
 
 
 def main():
