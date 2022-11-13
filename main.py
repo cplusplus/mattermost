@@ -350,7 +350,8 @@ while True:
             continue
 
         a_minute_ago = datetime.now() - timedelta(minutes=1)
-        created_more_than_a_minute_ago = post['create_at'] < a_minute_ago
+        posted_at = datetime.fromtimestamp(post['create_at'] / 1000.0)
+        created_more_than_a_minute_ago = posted_at < a_minute_ago
         if created_more_than_a_minute_ago:
             continue
 
@@ -371,7 +372,8 @@ while True:
 
                 message = post['message']
 
-                print(f'{nickname} ({username}) mentioned {bot_username} in channel {channel_name} ({channel_id}) with message: {message}')
+                print(
+                    f'{nickname} ({username}) mentioned {bot_username} in channel {channel_name} ({channel_id}) with message: {message}')
 
         if post['message'].startswith(f'@{bot_username}'):
             result = reference_mention_regex.finditer(post['message'].upper())
@@ -382,7 +384,8 @@ while True:
         for match in result:
             requested_references.append(match.group(1))
 
-        for requested_reference in set([requested_reference.replace(' ', '') for requested_reference in requested_references]):
+        for requested_reference in set(
+                [requested_reference.replace(' ', '') for requested_reference in requested_references]):
             message = formatter_factory.create_from_info(*repository.fetch_info_for(requested_reference)) \
                 .format_message()
             chat_message_service._driver.posts.create_post(options={
