@@ -382,9 +382,10 @@ class ChatMessageService:
         return self._me
 
     def reply_to(self, original_post, reply):
+        print(original_post)
         self._driver.posts.create_post(options={
             'channel_id': original_post['channel_id'],
-            'root_id': original_post['id'],
+            'root_id': original_post['root_id'] or original_post['id'],
             'message': reply
         })
 
@@ -410,7 +411,10 @@ class ChatCommandHandler:
             posted_at = datetime.fromtimestamp(message['create_at'] / 1000.0)
             posted_more_than_a_minute_ago = posted_at < a_minute_ago
 
-            return not (is_update_message or is_message_from_bot or posted_more_than_a_minute_ago)
+            is_message_in_thread = message['root_id'] != ''
+
+            return not (
+                    is_update_message or is_message_from_bot or posted_more_than_a_minute_ago or is_message_in_thread)
 
         for unread_post in filter(filter_posts, self._chat_service.read_posts()):
             username_of_bot = self._chat_service.me()['username']
