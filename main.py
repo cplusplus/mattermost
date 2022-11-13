@@ -544,6 +544,9 @@ class ChatCommandHandler:
     def _do_search_impl(self, keywords, type, post, user):
         results = self._paper_index.search(keywords, type=type)
         displayed_results = results[:15] if len(results) > 15 else results
+        further_results = results[15:30] if len(results) > 30 \
+            else results[15:] if len(results) > 15 \
+            else []
 
         if len(displayed_results) == 0:
             self._chat_service.reply_to(post, 'No results found.')
@@ -557,10 +560,21 @@ class ChatCommandHandler:
                     .format_message())
                 for result in displayed_results])
 
-            reply = f'{len(results)} results for your query'
+            reply = f'{len(results)} results' if len(results) > 1 else '1 result'
+            reply += ' for your query'
             if len(results) != len(displayed_results):
                 reply += f', showing most recent {len(displayed_results)}'
             reply += ':\n' + result_list
+
+            def short_link(id):
+                reference, info = self._paper_index.fetch_info_for(id)
+                long_link = info['long_link']
+                return f'[{reference}]({long_link})'
+
+            if len(further_results) >= 1:
+                lo = len(displayed_results) + 1
+                hi = lo + len(further_results) - 1
+                reply += f'\nAlso ({lo}-{hi}): ' + ', '.join([short_link(result['id']) for result in further_results])
 
             self._chat_service.reply_to(post, reply)
         except KeyError:
