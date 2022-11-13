@@ -1,12 +1,13 @@
 import time
 
-import requests
 from datetime import datetime, timedelta
 import re
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 from abc import ABC, abstractmethod
 import os
+import sys
 
+import requests
 from dotenv import load_dotenv
 from etag_cache import EtagCache
 from mattermostdriver import Driver
@@ -14,7 +15,7 @@ from mattermostdriver import Driver
 load_dotenv()
 
 
-class PaperRepository:
+class PaperIndex:
     request_method = 'GET'
     repository_url = os.getenv('PAPER_INDEX_URL')
     refresh_cooldown = timedelta(seconds=30)
@@ -151,7 +152,7 @@ class MessageFormatter(ABC):
 
 class IssueMessageFormatter(MessageFormatter):
     def format_message(self) -> str:
-        return self._format_message_components([':fire:',
+        return self._format_message_components([':speech_balloon:',
                                                 *self._paper_link_component(),
                                                 *self._section_component(),
                                                 *self._github_component(),
@@ -161,12 +162,14 @@ class IssueMessageFormatter(MessageFormatter):
         title = self._info['title']
         submitter = self._info['submitter']
 
-        text = f'[{self._reference}] {title} submitted by {submitter}'
+        text = f'[{self._reference}] {title}'
+
+        extra_info = f'submitted by {submitter}'
         if 'date' in self._info:
             date = self._info['date']
-            text += f' ({date})'
+            extra_info += f' ({date})'
         paper_link = self._create_link(text, self._info['long_link'])
-        return [paper_link]
+        return [f'{paper_link} {extra_info}']
 
     def _section_component(self):
         if 'section' in self._info:
@@ -191,14 +194,15 @@ class PaperMessageFormatter(MessageFormatter):
 
         if 'subgroup' in self._info:
             text += f' {self._get_audience()}:'
+        text += f' {title}'
 
-        text += f' {title} by {self._get_authors()}'
+        extra_info = f' by {self._get_authors()}'
 
         if 'date' in self._info:
             date = self._info['date']
-            text += f' ({date})'
+            extra_info += f' ({date})'
         paper_link = self._create_link(text, self._info['long_link'])
-        return [paper_link]
+        return [f'{paper_link}{extra_info}']
 
 
 class EditorialMessageFormatter(MessageFormatter):
@@ -216,7 +220,7 @@ class EditorialMessageFormatter(MessageFormatter):
 
 class StandingDocumentMessageFormatter(MessageFormatter):
     def format_message(self) -> str:
-        return self._format_message_components([':cpp:',
+        return self._format_message_components([':compass:',
                                                 *self._paper_link_component()])
 
     def _paper_link_component(self):
@@ -263,10 +267,11 @@ class ChatMessageService:
         self._driver.login()
         self._me = self._driver.users.get_user(user_id='me')
         self._initialize_from_cache()
+        self._teams = []
         self._channels = []
         self._read_channel_list()
 
-    def read_messages(self):
+    def read_posts(self):
         self._update_channel_list_if_needed()
 
         posts = [post
@@ -285,9 +290,9 @@ class ChatMessageService:
         self._channel_cursors = channel_cursors
 
     def _read_channel_list(self):
-        teams = self._driver.teams.get_user_teams(user_id=self._me['id'])
+        self._teams = self._driver.teams.get_user_teams(user_id=self._me['id'])
         updated_channels_list = [channel
-                                 for team in teams
+                                 for team in self._teams
                                  for channel in
                                  self._driver.channels.get_channels_for_user(user_id=self._me['id'],
                                                                              team_id=team['id'])]
@@ -326,73 +331,167 @@ class ChatMessageService:
 
     def _do_channel_join_leave_actions(self, channels_joined, channels_left):
         for channel_id in channels_joined:
-            print(f'Joined channel {channel_id}')
+            channel_name = next(filter(lambda channel: channel['id'] == channel_id, self._channels))['display_name'] \
+                           or '(none)'
+            channel_members = self._driver.channels.get_channel_members(channel_id=channel_id)
+            print(f'Joined channel {channel_id} (name: {channel_name}, members: {len(channel_members)})')
 
         for channel_id in channels_left:
             print(f'Left channel {channel_id}')
 
+    def me(self):
+        return self._me
 
-repository = PaperRepository()
-formatter_factory = MessageFormatterFactory()
+    def reply_to(self, original_post, reply):
+        self._driver.posts.create_post(options={
+            'channel_id': original_post['channel_id'],
+            'root_id': original_post['id'],
+            'message': reply
+        })
 
-chat_message_service = ChatMessageService()
 
-reference_mention_regex = re.compile(r'(?:CWG|D|EDIT|EWG|FS|LEWG|LWG|SD|N|P) ?\d+(R\d+)?')
-reference_brackets_regex = re.compile(r'\[((?:CWG|D|EDIT|EWG|FS|LEWG|LWG|SD|N|P) ?\d+(R\d+)?)\]')
+class ChatCommandHandler:
+    split_command_token_regex = re.compile(r'[\s,\.;:!\?]+')
+    reference_mention_regex = re.compile(r'(?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?')
+    # r'(?:CWG|D|EDIT|EWG|FS|LEWG|LWG|SD|N|P) ?\d+(R\d+)?'
+    reference_brackets_regex = re.compile(r'\[((?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?)]')
 
-while True:
-    posts = chat_message_service.read_messages()
-    for post in posts:
-        if post['update_at'] != post['create_at']:
-            continue
+    def __init__(self, chat_message_service: ChatMessageService, paper_index: PaperIndex):
+        self._chat_service = chat_message_service
+        self._paper_index = paper_index
+        self._formatter_factory = MessageFormatterFactory()
 
-        if post['user_id'] == chat_message_service._me['id']:
-            continue
+    def run_once(self):
+        def filter_posts(message: Dict) -> bool:
+            is_update_message = message['update_at'] != message['create_at']
 
-        a_minute_ago = datetime.now() - timedelta(minutes=1)
-        posted_at = datetime.fromtimestamp(post['create_at'] / 1000.0)
-        created_more_than_a_minute_ago = posted_at < a_minute_ago
-        if created_more_than_a_minute_ago:
-            continue
+            is_message_from_bot = message['user_id'] == self._chat_service.me()['id']
 
-        requested_references = []
+            a_minute_ago = datetime.now() - timedelta(minutes=1)
+            posted_at = datetime.fromtimestamp(message['create_at'] / 1000.0)
+            posted_more_than_a_minute_ago = posted_at < a_minute_ago
 
-        user = chat_message_service._driver.users.get_user(user_id=post['user_id'])
+            return not (is_update_message or is_message_from_bot or posted_more_than_a_minute_ago)
+
+        for unread_post in filter(filter_posts, self._chat_service.read_posts()):
+            username_of_bot = self._chat_service.me()['username']
+
+            user = self._chat_service._driver.users.get_user(user_id=unread_post['user_id'])
+
+            bot_is_mentioned_in_message = f'@{username_of_bot}' in unread_post['message']
+            if bot_is_mentioned_in_message:
+                self._log_request_to_bot(unread_post, user)
+
+            message_starts_with_mentioning_bot = unread_post['message'].startswith(f'@{username_of_bot}')
+            if message_starts_with_mentioning_bot:
+                self._handle_bot_command(unread_post, user)
+                return
+
+            self._handle_paper_request([], unread_post, user, False)
+
+    def _handle_bot_command(self, unread_post, user):
+        tokens = list(filter(
+            lambda token: len(token.strip()) >= 1,
+            self.split_command_token_regex.split(unread_post['message'])))
+
+        command = tokens[1] if len(tokens) >= 2 else '_'
+        command_handlers = {
+            'help': self._do_help,
+            'kill': self._do_kill,
+            '_': self._handle_paper_request,
+        }
+        handler = command_handlers[command if command in command_handlers else '_']
+        handler(tokens, unread_post, user)
+
+    def _do_help(self, tokens, post, user):
         username = user['username']
-        nickname = user['nickname']
+        nickname = user['nickname'] or '(none)'
+        display_name = '{} {}'.format(user['first_name'], user['last_name']) if user['first_name'] else '(none)'
+        print(f'Help requested by {display_name} - {nickname} ({username})')
 
-        bot_username = chat_message_service._me['username']
-        if f'@{bot_username}' in post['message']:
-            channel = next(filter(lambda channel: channel['id'] == post['channel_id'], chat_message_service._channels))
-            is_direct_message_channel = channel['type'] == 'D'
+        username_of_bot = self._chat_service.me()['username']
+        reply = f'Usage: "@{username_of_bot} <Nxxxx|Pxxxx|PxxxxRx|Dxxxx|DxxxxRx|CWGxxx|EWGxxx|LWGxxx|LEWGxxx|FSxxx>"\n' \
+                f'\n' \
+                f'{username_of_bot} will also lookup any paper posted in square brackets, even without being mentioned.'
 
-            if not is_direct_message_channel or True:
-                channel_name = channel['display_name']
-                channel_id = channel['id']
+        self._chat_service.reply_to(post, reply)
 
-                message = post['message']
+    def _handle_paper_request(self, tokens, post, user, collect_references_without_brackets=True):
+        def deduplicate(references):
+            return set([requested_reference.replace(' ', '') for requested_reference in references])
 
-                print(
-                    f'{nickname} ({username}) mentioned {bot_username} in channel {channel_name} ({channel_id}) with message: {message}')
+        references = self._collect_references_from_message(post, collect_references_without_brackets)
 
-        if post['message'].startswith(f'@{bot_username}'):
-            result = reference_mention_regex.finditer(post['message'].upper())
+        reply_components = []
+        for requested_reference in deduplicate(references):
+            reply_components.append(self._formatter_factory.create_from_info(
+                *self._paper_index.fetch_info_for(requested_reference))
+                                    .format_message())
+
+        username = user['username']
+        nickname = user['nickname'] or '(none)'
+        display_name = '{} {}'.format(user['first_name'], user['last_name']) if user['first_name'] else '(none)'
+        message = '\n'.join(reply_components)
+
+        self._chat_service.reply_to(post, message)
+
+    def _log_request_to_bot(self, post, user):
+        channel = next(filter(lambda channel: channel['id'] == post['channel_id'], self._chat_service._channels))
+        is_direct_message_channel = channel['type'] == 'D'
+
+        if is_direct_message_channel and False:  # TODO: remove bypass
+            return
+
+        channel_name = channel['display_name'] or '(none)'
+        channel_id = channel['id']
+        message = post['message']
+
+        username = user['username']
+        nickname = user['nickname'] or '(none)'
+        display_name = '{} {}'.format(user['first_name'], user['last_name']) if user['first_name'] else '(none)'
+
+        print(
+            f'{display_name} - {nickname} ({username}) mentioned the bot in channel {channel_name} ({channel_id}) with message: {message}')
+
+    def _collect_references_from_message(self, post, collect_references_without_brackets=False):
+        references = []
+        if collect_references_without_brackets:
+            result = self.reference_mention_regex.finditer(post['message'].upper())
             for match in result:
-                requested_references.append(match.group())
+                references.append(match.group())
 
-        result = reference_brackets_regex.finditer(post['message'].upper())
+        result = self.reference_brackets_regex.finditer(post['message'].upper())
         for match in result:
-            requested_references.append(match.group(1))
+            references.append(match.group(1))
 
-        for requested_reference in set(
-                [requested_reference.replace(' ', '') for requested_reference in requested_references]):
-            message = formatter_factory.create_from_info(*repository.fetch_info_for(requested_reference)) \
-                .format_message()
-            chat_message_service._driver.posts.create_post(options={
-                'channel_id': post['channel_id'],
-                'root_id': post['id'],
-                'message': message,
-            })
-            print(f'Responding to {nickname} ({username}) with message: {message}')
+        return references
 
-    time.sleep(1)
+    def _do_kill(self, tokens, post, user):
+        operators = ['tahonermann',
+                     'sbuettner']
+
+        if user['username'] not in operators:
+            print('Ignoring terminating request')
+            return
+
+        username = user['username']
+        nickname = user['nickname'] or '(none)'
+        display_name = '{} {}'.format(user['first_name'], user['last_name']) if user['first_name'] else '(none)'
+
+        print(f'Terminating paperbot after user request from {display_name} - {nickname} ({username})')
+        sys.exit(1)
+
+
+def main():
+    paper_index = PaperIndex()
+    chat_message_service = ChatMessageService()
+
+    chat_command_manager = ChatCommandHandler(chat_message_service=chat_message_service,
+                                              paper_index=paper_index)
+
+    while True:
+        chat_command_manager.run_once()
+        time.sleep(1)
+
+
+main()
