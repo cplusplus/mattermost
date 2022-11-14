@@ -212,11 +212,13 @@ class IssueMessageFormatter(MessageFormatter):
 
     def _paper_link_component(self):
         title = self._info['title']
-        submitter = self._info['submitter']
 
         text = f'[{self._reference}] {title}'
 
-        extra_info = f'submitted by {submitter}'
+        extra_info = ''
+        if 'submitter' in self._info:
+            submitter = self._info['submitter']
+            extra_info += f'submitted by {submitter}'
         if 'date' in self._info:
             date = self._info['date']
             extra_info += f' ({date})'
