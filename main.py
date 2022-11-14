@@ -620,7 +620,8 @@ class ChatCommandHandler:
             debug_trace_timings()
             self._chat_service.reply_to(post, reply)
         except KeyError:
-            print(f'Formatting of one or multiple documents failed', displayed_results)
+            print(f'Formatting of one or multiple documents failed',
+                  ', '.join([result['id'] for result in [*displayed_results, *further_results]]))
             self._chat_service.reply_to(post, 'An error occurred.')
         debug_trace_timings()
 
