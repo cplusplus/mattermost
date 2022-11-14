@@ -366,13 +366,13 @@ class ChatMessageService:
 
     def _update_channel_list_if_needed(self):
         now = datetime.now()
-        next_update_due = self._last_channel_update + timedelta(minutes=5)
+        next_update_due = self._last_channel_update + timedelta(minutes=2)
         if next_update_due <= now:
             self._read_channel_list()
 
     def _read_messages_from_channel(self, channel):
         params = {
-            'per_page': 5,
+            'per_page': 10,
         }
         if channel['id'] in self._channel_cursors:
             params['after'] = self._channel_cursors[channel['id']]
@@ -638,7 +638,7 @@ def main():
     print('Bot ready.')
     while True:
         chat_command_manager.run_once()
-        time.sleep(1)
+        time.sleep(0.5)
 
 
 main()
