@@ -6,6 +6,7 @@ from typing import Tuple, Dict, List
 from abc import ABC, abstractmethod
 import os
 import sys
+import inspect
 
 import requests
 from dotenv import load_dotenv
@@ -13,6 +14,14 @@ from etag_cache import EtagCache
 from mattermostdriver import Driver
 
 load_dotenv()
+
+
+def debug_trace_timings():
+    if not os.getenv('TESTING', False):
+        return
+
+    frame_info = inspect.stack()[1]
+    print(f'--- {datetime.now()} - [{frame_info.function}][{frame_info.filename}:{frame_info.lineno}] ---')
 
 
 class PaperIndex:
@@ -63,6 +72,8 @@ class PaperIndex:
         self._index = updated_index
 
     def fetch_info_for(self, reference_or_id: str) -> Tuple[str, Dict]:
+        debug_trace_timings()
+
         def extract_reference_and_key_from_ref_or_id(reference_or_id: str) -> Tuple[str, str]:
             m = self.reference_and_revision_regex.match(reference_or_id)
             if m:
@@ -74,9 +85,12 @@ class PaperIndex:
 
         self._try_refresh_index()
         reference, key = extract_reference_and_key_from_ref_or_id(reference_or_id)
-        return (key, self._index[reference][key]) \
+        result = (key, self._index[reference][key]) \
             if reference in self._index and key in self._index[reference] \
             else (reference_or_id, None)
+
+        debug_trace_timings()
+        return result
 
     def search(self, keywords: List, type: str | None = None):
         def matches_search(entry):
@@ -402,6 +416,8 @@ class ChatCommandHandler:
         self._formatter_factory = MessageFormatterFactory()
 
     def run_once(self):
+        debug_trace_timings()
+
         def filter_posts(message: Dict) -> bool:
             is_update_message = message['update_at'] != message['create_at']
 
@@ -417,6 +433,7 @@ class ChatCommandHandler:
                     is_update_message or is_message_from_bot or posted_more_than_a_minute_ago or is_message_in_thread)
 
         for unread_post in filter(filter_posts, self._chat_service.read_posts()):
+            debug_trace_timings()
             username_of_bot = self._chat_service.me()['username']
 
             user = self._chat_service._driver.users.get_user(user_id=unread_post['user_id'])
@@ -433,6 +450,7 @@ class ChatCommandHandler:
             self._handle_paper_request([], unread_post, user, False)
 
     def _handle_bot_command(self, unread_post, user):
+        debug_trace_timings()
         tokens = list(filter(
             lambda token: len(token.strip()) >= 1,
             self.split_command_token_regex.split(unread_post['message'])))
@@ -530,8 +548,7 @@ class ChatCommandHandler:
         sys.exit(1)
 
     def _do_search(self, tokens, post, user):
-        print(tokens)
-
+        debug_trace_timings()
         if tokens[2] == 'papers':
             self._do_search_impl(tokens[3:], 'paper', post, user)
         elif tokens[2] == 'issues':
@@ -542,7 +559,10 @@ class ChatCommandHandler:
             self._do_search_impl(tokens[2:], None, post, user)
 
     def _do_search_impl(self, keywords, type, post, user):
+        debug_trace_timings()
+
         results = self._paper_index.search(keywords, type=type)
+        debug_trace_timings()
         displayed_results = results[:15] if len(results) > 15 else results
         further_results = results[15:30] if len(results) > 30 \
             else results[15:] if len(results) > 15 \
@@ -559,6 +579,7 @@ class ChatCommandHandler:
                         *self._paper_index.fetch_info_for(result['id']))
                     .format_message())
                 for result in displayed_results])
+            debug_trace_timings()
 
             reply = f'{len(results)} results' if len(results) > 1 else '1 result'
             reply += ' for your query'
@@ -575,11 +596,12 @@ class ChatCommandHandler:
                 lo = len(displayed_results) + 1
                 hi = lo + len(further_results) - 1
                 reply += f'\nAlso ({lo}-{hi}): ' + ', '.join([short_link(result['id']) for result in further_results])
-
+            debug_trace_timings()
             self._chat_service.reply_to(post, reply)
         except KeyError:
             print(f'Formatting of one or multiple documents failed', displayed_results)
             self._chat_service.reply_to(post, 'An error occurred.')
+        debug_trace_timings()
 
 
 def main():
@@ -589,6 +611,7 @@ def main():
     chat_command_manager = ChatCommandHandler(chat_message_service=chat_message_service,
                                               paper_index=paper_index)
 
+    print('Bot ready.')
     while True:
         chat_command_manager.run_once()
         time.sleep(1)
