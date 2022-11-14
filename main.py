@@ -451,18 +451,26 @@ class ChatCommandHandler:
 
             message_starts_with_mentioning_bot = unread_post['message'].startswith(f'@{username_of_bot}')
             if message_starts_with_mentioning_bot:
-                self._handle_bot_command(unread_post, user)
+                self._handle_bot_command(unread_post, user, True)
+                return
+
+            chat_participants = self._chat_service._driver.channels.get_channel_members(channel_id=unread_post['channel_id'])
+            is_a_direct_chat_only_with_the_bot = channel_members = len(chat_participants) == 2
+            if is_a_direct_chat_only_with_the_bot:
+                self._handle_bot_command(unread_post, user, False)
                 return
 
             self._handle_paper_request([], unread_post, user, False)
 
-    def _handle_bot_command(self, unread_post, user):
+    def _handle_bot_command(self, unread_post, user, starts_with_mention: bool):
         debug_trace_timings()
         tokens = list(filter(
             lambda token: len(token.strip()) >= 1,
             self.split_command_token_regex.split(unread_post['message'])))
+        if starts_with_mention:
+            tokens = tokens[1:]
 
-        command = tokens[1] if len(tokens) >= 2 else '_'
+        command = tokens[0] if len(tokens) >= 1 else '_'
         command_handlers = {
             'help': self._do_help,
             'kill': self._do_kill,
@@ -470,6 +478,7 @@ class ChatCommandHandler:
             '_': self._handle_paper_request,
         }
         handler = command_handlers[command if command in command_handlers else '_']
+        tokens = tokens[(1 if command in command_handlers else 0):]
         handler(tokens, unread_post, user)
 
     def _do_help(self, tokens, post, user):
@@ -482,7 +491,8 @@ class ChatCommandHandler:
         reply = f':book: | Usage: "@{username_of_bot} search [papers|issues|everything] <keywords>"\n' \
                 f'\t\t\t\tor "@{username_of_bot} <Nxxxx|Pxxxx|PxxxxRx|Dxxxx|DxxxxRx|CWGxxx|EWGxxx|LWGxxx|LEWGxxx|FSxxx>"\n' \
                 f'\n' \
-                f'{username_of_bot} will also lookup any paper posted in square brackets, even without being mentioned.'
+                f'{username_of_bot} will also lookup any paper posted in square brackets, even without being mentioned.\n' \
+                f'In a DM with the paperbot only you do not need to mention it.'
 
         self._chat_service.reply_to(post, reply)
 
@@ -560,14 +570,14 @@ class ChatCommandHandler:
 
     def _do_search(self, tokens, post, user):
         debug_trace_timings()
-        if tokens[2] == 'papers':
-            self._do_search_impl(tokens[3:], 'paper', post, user)
-        elif tokens[2] == 'issues':
-            self._do_search_impl(tokens[3:], 'issue', post, user)
-        elif tokens[2] == 'everything':
-            self._do_search_impl(tokens[3:], None, post, user)
+        if tokens[0] == 'papers':
+            self._do_search_impl(tokens[1:], 'paper', post, user)
+        elif tokens[0] == 'issues':
+            self._do_search_impl(tokens[1:], 'issue', post, user)
+        elif tokens[0] == 'everything':
+            self._do_search_impl(tokens[1:], None, post, user)
         else:
-            self._do_search_impl(tokens[2:], None, post, user)
+            self._do_search_impl(tokens, None, post, user)
 
     def _do_search_impl(self, keywords, type, post, user):
         debug_trace_timings()
