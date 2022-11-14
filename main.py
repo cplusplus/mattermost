@@ -98,6 +98,8 @@ class PaperIndex:
             return all([keyword in entry['keywords'] for keyword in keywords]) and \
                 (type is None or entry['type'] == type)
 
+        keywords = [kw.lower() for kw in keywords]
+
         result = [entry for entry in self._search_index if matches_search(entry)]
         return sorted(result, key=lambda entry: entry['date'], reverse=True)
 
