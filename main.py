@@ -504,7 +504,8 @@ class ChatCommandHandler:
         display_name = '{} {}'.format(user['first_name'], user['last_name']) if user['first_name'] else '(none)'
         message = '\n'.join(reply_components)
 
-        self._chat_service.reply_to(post, message)
+        if len(reply_components) > 0:
+            self._chat_service.reply_to(post, message)
 
     def _log_request_to_bot(self, post, user):
         channel = next(filter(lambda channel: channel['id'] == post['channel_id'], self._chat_service._channels))
