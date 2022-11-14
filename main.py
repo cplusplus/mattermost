@@ -429,8 +429,13 @@ class ChatCommandHandler:
 
             is_message_in_thread = message['root_id'] != ''
 
-            return not (
-                    is_update_message or is_message_from_bot or posted_more_than_a_minute_ago or is_message_in_thread)
+            testmode_unlock = '@paperbottest' in message['message'] or not os.getenv('TESTING', False)
+
+            return not (is_update_message
+                        or is_message_from_bot
+                        or posted_more_than_a_minute_ago
+                        or is_message_in_thread) \
+                and testmode_unlock
 
         for unread_post in filter(filter_posts, self._chat_service.read_posts()):
             debug_trace_timings()
