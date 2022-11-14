@@ -45,7 +45,7 @@ class PaperIndex:
 
     def _try_refresh_index_if_needed(self):
         now = datetime.now()
-        refresh_no_earlier_than = self._timestamp_of_last_refresh + self.refresh_cooldown
+        refresh_no_earlier_than = (self._timestamp_of_last_refresh or datetime.fromtimestamp(0)) + self.refresh_cooldown
 
         if refresh_no_earlier_than <= now:
             self._try_refresh_index()
@@ -83,7 +83,8 @@ class PaperIndex:
                     if reference_or_id in self._index \
                     else '_'
 
-        self._try_refresh_index()
+        self._try_refresh_index_if_needed()
+        debug_trace_timings()
         reference, key = extract_reference_and_key_from_ref_or_id(reference_or_id)
         result = (key, self._index[reference][key]) \
             if reference in self._index and key in self._index[reference] \
