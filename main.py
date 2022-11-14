@@ -397,7 +397,6 @@ class ChatMessageService:
         return self._me
 
     def reply_to(self, original_post, reply):
-        print(original_post)
         self._driver.posts.create_post(options={
             'channel_id': original_post['channel_id'],
             'root_id': original_post['root_id'] or original_post['id'],
