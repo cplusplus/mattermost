@@ -550,6 +550,9 @@ class ChatCommandHandler:
         nickname = user['nickname'] or '(none)'
         display_name = '{} {}'.format(user['first_name'], user['last_name']) if user['first_name'] else '(none)'
 
+        reply = f'Terminating paperbot after user request from {display_name} - {nickname} ({username})'
+        self._chat_service.reply_to(post, reply)
+
         print(f'Terminating paperbot after user request from {display_name} - {nickname} ({username})')
         sys.exit(1)
 
