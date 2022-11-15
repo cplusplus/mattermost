@@ -601,6 +601,11 @@ class ChatCommandHandler:
             self._chat_service.reply_to(post, reply)
             return
 
+        username = user['username']
+        nickname = user['nickname'] or '(none)'
+        display_name = '{} {}'.format(user['first_name'], user['last_name']) if user['first_name'] else '(none)'
+
+        print(f'User {display_name} - {nickname} ({username}) searched for documents, type: {type}, keywords: {keywords} returned {len(results)} results')
         try:
             result_list = '\n'.join([
                 '1. {}'.format(
