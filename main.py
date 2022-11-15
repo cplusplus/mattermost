@@ -592,7 +592,13 @@ class ChatCommandHandler:
             else []
 
         if len(displayed_results) == 0:
-            self._chat_service.reply_to(post, 'No results found.')
+            reply = 'No results found for your search '
+            if type is not None:
+                reply += f'for **{type}s**'
+            else:
+                reply += f'for all documents'
+            reply += f' with the keywords: *{", ".join(keywords)}*'
+            self._chat_service.reply_to(post, reply)
             return
 
         try:
@@ -604,10 +610,15 @@ class ChatCommandHandler:
                 for result in displayed_results])
             debug_trace_timings()
 
-            reply = f'{len(results)} results' if len(results) > 1 else '1 result'
-            reply += ' for your query'
+            reply = f'Found {len(results)} results' if len(results) > 1 else '1 result'
+            reply += f' for your search '
+            if type is not None:
+                reply += f'for **{type}s**'
+            else:
+                reply += f'for all documents'
+            reply += f' with the keywords: *{", ".join(keywords)}*'
             if len(results) != len(displayed_results):
-                reply += f', showing most recent {len(displayed_results)}'
+                reply += f', showing most recent {len(displayed_results)} documents'
             reply += ':\n' + result_list
 
             def short_link(id):
