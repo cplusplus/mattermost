@@ -315,14 +315,7 @@ class ChatMessageService:
     mattermost_channel_cache_dir = os.getenv('MATTERMOST_CHANNEL_CACHE')
 
     def __init__(self):
-        self._driver = Driver(options={
-            'url': self.mattermost_url,
-            'token': self.mattermost_token,
-            'scheme': self.mattermost_scheme,
-            'port': self.mattermost_port,
-            'debug': False,
-        })
-        self._driver.login()
+        self.reconnect()
         self._me = self._driver.users.get_user(user_id='me')
         self._initialize_from_cache()
         self._teams = []
@@ -336,6 +329,16 @@ class ChatMessageService:
                  for channel in self._channels
                  for post in self._read_messages_from_channel(channel).values()]
         return posts
+
+    def reconnect(self):
+        self._driver = Driver(options={
+            'url': self.mattermost_url,
+            'token': self.mattermost_token,
+            'scheme': self.mattermost_scheme,
+            'port': self.mattermost_port,
+            'debug': False,
+        })
+        self._driver.login()
 
     def _initialize_from_cache(self):
         os.makedirs(self.mattermost_channel_cache_dir, exist_ok=True)
@@ -403,7 +406,6 @@ class ChatMessageService:
     def reply_to(self, original_post, reply):
         self._driver.posts.create_post(options={
             'channel_id': original_post['channel_id'],
-            'root_id': original_post['root_id'] or original_post['id'],
             'message': reply
         })
 
@@ -653,8 +655,10 @@ def main():
 
     print('Bot ready.')
     while True:
-        chat_command_manager.run_once()
-        time.sleep(0.5)
-
+        try:
+            chat_command_manager.run_once()
+            time.sleep(0.5)
+        except: # urllib3.exceptions.ConnectTimeoutError, urllib3.exceptions.MaxRetryError
+            chat_message_service.reconnect()
 
 main()
