@@ -2,9 +2,9 @@
   "name": "isocpp-mattermost-paperbot",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node src/index.js"
   },
   "author": "Sebastian Büttner <mail@bueddl.de>",
   "license": "MIT",

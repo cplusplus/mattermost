@@ -288,15 +288,15 @@ class PaperBot {
     }
 
     initChatConnection(config) {
-        const Client4 = require('./node_modules/mattermost-redux/client/client4.js').default;
+        const Client4 = require('../node_modules/mattermost-redux/client/client4.js').default;
         this.client = new Client4;
-        this.wsClient = require('./node_modules/mattermost-redux/client/websocket_client.js').default;
+        this.wsClient = require('../node_modules/mattermost-redux/client/websocket_client.js').default;
         const {
             Post,
             PostList,
             PostSearchResults,
             OpenGraphMetadata
-        } = require("./node_modules/mattermost-redux/types/posts");
+        } = require("../node_modules/mattermost-redux/types/posts");
 
         this.client.setUrl(config.apiUrl);
         this.client.setToken(config.token);
