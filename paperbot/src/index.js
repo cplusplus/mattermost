@@ -381,7 +381,7 @@ class PaperBot {
             return;
         }
 
-        const command_token = tokenized[0];
+        const command_token = tokenized[0].toLowerCase();
         if (command_token in this.commands) {
             this.stats.commands_handled += 1;
             this.commands[command_token](post, message, tokenized);
