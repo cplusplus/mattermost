@@ -272,6 +272,7 @@ class PaperBot {
             commands: {
                 help: 0,
                 search: 0,
+                version: 0,
             },
             index: {
                 update_checks_peformed: 0,
@@ -411,6 +412,8 @@ class PaperBot {
     }
 
     handleVersionCommand(post, message, tokenized) {
+        this.stats.commands.version += 1;
+
         var pjson = require('../package.json');
         this.respondTo(post, 'Running PaperBot in Version {0}'.format(pjson.version));
     }
