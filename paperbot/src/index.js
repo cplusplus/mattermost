@@ -279,6 +279,8 @@ class PaperBot {
                 updates_triggered: 0,
                 updates_successful: 0,
                 lookups: 0,
+                index_rebuilt: 0,
+                search_index_rebuilt: 0,
             },
             formattings_requested: 0,
             formattings_done: 0,
@@ -409,6 +411,88 @@ class PaperBot {
 
     handleSearchCommand(post, message, tokenized) {
         this.stats.commands.search += 1;
+
+        if (tokenized.length < 2) {
+            this.respondTo(post, "Invalid search command, see help for how to use the search.");
+            return;
+        }
+
+        const [keywords, type_filter] = (() => {
+            switch (tokenized[1]) {
+                case 'papers':
+                case 'paper':
+                    return [tokenized.slice(2), 'paper'];
+                case 'issues':
+                case 'issue':
+                    return [tokenized.slice(2), 'issue'];
+                case 'everything':
+                    return [tokenized.slice(2), undefined];
+                default:
+                    return [tokenized.slice(1), undefined];
+            }
+        })();
+
+        this.doSearch(keywords, type_filter, post)
+    }
+
+    doSearch(keywords, type, post) {
+        this.ensurePaperIndexUpdated().then(() => {
+            const results = this.searchPapers(keywords, type);
+            const displayed_results = results.slice(0, 15);
+            const further_results = results.slice(15, 30);
+
+            if (displayed_results.length == 0) {
+                let reply = 'No results found for your search ';
+                if (type !== undefined) {
+                    reply += 'for **{0}s**'.format(type);
+                } else {
+                    reply += 'for all documents';
+                }
+                reply += ' with the keywords: *{0}*'.format(keywords.join(", "));
+                this.respondTo(post, reply);
+                return;
+            }
+
+            try {
+                const result_list = displayed_results.map(
+                        (result) => '1. {0}'
+                        .format(this.message_formatter_factory
+                            .createFromInfo(...this.getPaperInfoByRef(result['id']))
+                            .formatMessage()))
+                    .join('\n');
+
+                let reply = results.length != 1 ? 'Found {0} results'.format(results.length) : '1 result';
+                reply += ' for your search ';
+                if (type !== undefined) {
+                    reply += 'for **{0}s**'.format(type);
+                } else {
+                    reply += 'for all documents';
+                }
+                reply += ' with the keywords: *{0}*'.format(keywords.join(', '));
+
+                if (results.length != displayed_results.length) {
+                    reply += ', showing most recent {0} documents'.format(displayed_results.length);
+                }
+                reply += ':\n' + result_list;
+
+                let shortLink = (id) => {
+                    const [reference, info] = this.getPaperInfoByRef(id);
+                    const long_link = info['long_link'];
+                    return '[{0}]({1})'.format(reference, long_link);
+                }
+
+                if (further_results.length >= 1) {
+                    const lo = displayed_results.length + 1;
+                    const hi = lo + further_results.length - 1;
+                    reply += '\nAlso ({0}-{1}): '.format(lo, hi) + further_results.map((result) => shortLink(result['id'])).join(', ');
+                }
+
+                this.respondTo(post, reply)
+            } catch (e) {
+                console.log(e);
+                this.respondTo(post, 'An error occurred.');
+            }
+        });
     }
 
     handleBracketPaperRequest(post) {
@@ -494,7 +578,8 @@ class PaperBot {
                     this.stats.index.updates_successful += 1;
 
                     this.cache_timestamp = new Date();
-                    this.paper_index = index_data;
+                    this.rebuildIndex(index_data);
+                    this.rebuildSearchIndex();
                     resolve();
                 });
             });
@@ -504,19 +589,90 @@ class PaperBot {
     getPaperInfoByRef(ref) {
         this.stats.index.lookups += 1;
 
-        const normalized_reference = ref.toUpperCase().replaceAll(' ', '');
-        if (normalized_reference in this.paper_index) {
-            return [normalized_reference, this.paper_index[normalized_reference]];
+        const reference_or_id = ref.toUpperCase().replaceAll(' ', '');
+
+        let extractReferenceAndKeyFromRefOrId = (reference_or_id) => {
+            const reference_and_revision_regex = /(.+)R(\d+)/;
+            const m = reference_and_revision_regex.exec(reference_or_id);
+            if (m !== null) {
+                return [m[1], reference_or_id];
+            } else {
+                return [reference_or_id, reference_or_id in this.paper_index ? this.paper_index[reference_or_id]['_'] : '_'];
+            }
+        };
+
+        const [reference, key] = extractReferenceAndKeyFromRefOrId(reference_or_id);
+        const result = reference in this.paper_index && key in this.paper_index[reference] ?
+            [key, this.paper_index[reference][key]] :
+            [reference_or_id, undefined];
+
+        return result;
+    }
+
+    searchPapers(keywords, type) {
+        let matchesSearch = (entry) => {
+            if (type !== undefined && entry['type'] != type) {
+                return false;
+            }
+
+            return keywords.map((keyword) => entry['keywords'].includes(keyword)).every(v => v === true);
         }
 
-        const revisions_found = Object.keys(this.paper_index).filter((key) => key.startsWith("{0}R".format(normalized_reference))).map((key) => parseInt(key.split('R')[1]));
-        if (revisions_found.length != 0) {
-            const latest_revision = Math.max(...revisions_found);
-            const revision_found = "{0}R{1}".format(normalized_reference, latest_revision);
-            return [revision_found, this.paper_index[revision_found]];
+        keywords = keywords.map((kw) => kw.toLowerCase());
+        const result = this.search_index.filter((entry) => matchesSearch(entry));
+        //return sorted(result, key=lambda entry: entry['date'], reverse=True)
+        // TODO: sort by date descending.
+        return result;
+    }
+
+    rebuildIndex(index_payload) {
+        const reference_and_revision_regex = /(.+)R(\d+)/;
+
+        let extractReferenceAndRevisionFromRef = (id) => {
+            const m = reference_and_revision_regex.exec(id);
+            return m !== null ? [m[1], parseInt(m[2])] : [id, 0];
         }
 
-        return [normalized_reference, undefined];
+        let updated_index = {};
+        Object.entries(index_payload).forEach(([id, info]) => {
+            const [reference, revision] = extractReferenceAndRevisionFromRef(id);
+            if (!(reference in updated_index)) {
+                updated_index[reference] = {};
+            }
+
+            updated_index[reference][id] = info;
+            let [_, latest_revision] = '_' in updated_index[reference] ? extractReferenceAndRevisionFromRef(updated_index[reference]['_']) : [undefined, 0];
+            if (revision >= latest_revision) {
+                updated_index[reference]['_'] = id;
+            }
+        });
+
+        this.paper_index = updated_index;
+        this.stats.index.index_rebuilt += 1;
+    }
+
+    rebuildSearchIndex() {
+        function getDate(entry) {
+            const date_value = 'data' in entry ? entry['date'] : '1970-01-01';
+            return Date.parse(date_value);
+        }
+
+        this.search_index = Object.entries(this.paper_index).map(([reference, document]) => {
+            return {
+                'id': reference,
+                'type': document[document['_']]['type'],
+                'date': getDate(document[document['_']]),
+                'keywords': Object.entries(document).filter(([key, _]) => key != '_').map(([key, data]) => '{0} {1} {2} {3} {4}'.format(
+                    key,
+                    data['title'],
+                    'section' in data ? data['section'] : '',
+                    'submitter' in data ? data['submitter'] : '',
+                    'author' in data ? data['author'] : '',
+                )).join(' ').toLowerCase()
+            }
+        });
+
+        this.stats.index.search_index_rebuilt += 1;
     }
 }
 
