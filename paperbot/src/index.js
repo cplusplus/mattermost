@@ -252,10 +252,15 @@ class PaperBot {
     }
 
     initHealthCheckService() {
+        const pjson = require('../package.json');
+        this.launch_timestamp = new Date();
+
         const express = require('express')
         this.express = express()
         this.express.get("/health", (req, res) => this.handleHealthCheck(req, res));
         this.stats = {
+            version: pjson.version,
+            uptime: 0,
             chat: {
                 interactions: 0,
                 handled_events: 0,
@@ -319,6 +324,7 @@ class PaperBot {
     }
 
     handleHealthCheck(req, res) {
+        this.stats.uptime = new Date() - this.launch_timestamp;
         res.json(this.stats)
     }
 
