@@ -244,6 +244,7 @@ class PaperBot {
         this.commands = {};
         this.registerCommand('help', this.handleHelpCommand);
         this.registerCommand('search', this.handleSearchCommand);
+        this.registerCommand('version', this.handleVersionCommand);
     }
 
     registerCommand(token, handler) {
@@ -407,6 +408,11 @@ class PaperBot {
             "Paperbot will also lookup any paper posted in square brackets, even without being mentioned.\n" +
             "In a DM with the paperbot only you do not need to mention it.").format(this.me.username);
         this.respondTo(post, help);
+    }
+
+    handleVersionCommand(post, message, tokenized) {
+        var pjson = require('../package.json');
+        this.respondTo(post, 'Running PaperBot in Version {0}'.format(pjson.version));
     }
 
     handleSearchCommand(post, message, tokenized) {
