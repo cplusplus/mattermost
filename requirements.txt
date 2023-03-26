@@ -1,4 +1,0 @@
-mattermostdriver
-etag_cache
-python-dotenv
-requests
