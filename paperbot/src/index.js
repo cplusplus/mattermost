@@ -635,8 +635,7 @@ class PaperBot {
 
         keywords = keywords.map((kw) => kw.toLowerCase());
         const result = this.search_index.filter((entry) => matchesSearch(entry));
-        //return sorted(result, key=lambda entry: entry['date'], reverse=True)
-        // TODO: sort by date descending.
+        result.sort((lhs, rhs) => rhs.date - lhs.date);
         return result;
     }
 
@@ -668,7 +667,7 @@ class PaperBot {
 
     rebuildSearchIndex() {
         function getDate(entry) {
-            const date_value = 'data' in entry ? entry['date'] : '1970-01-01';
+            const date_value = 'date' in entry ? entry['date'] : '1970-01-01';
             return Date.parse(date_value);
         }
 
