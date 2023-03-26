@@ -275,7 +275,7 @@ class PaperBot {
                 version: 0,
             },
             index: {
-                update_checks_peformed: 0,
+                update_checks_performed: 0,
                 cache_hits: 0,
                 cache_expirations: 0,
                 updates_triggered: 0,
@@ -559,7 +559,7 @@ class PaperBot {
     }
 
     ensurePaperIndexUpdated() {
-        this.stats.index.update_checks_peformed += 1;
+        this.stats.index.update_checks_performed += 1;
 
         const now = new Date();
         const cache_age = now - this.cache_timestamp;
