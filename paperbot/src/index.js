@@ -438,7 +438,7 @@ class PaperBot {
             }
         })();
 
-        this.doSearch(keywords, type_filter, post)
+        this.doSearch(keywords, type_filter, post);
     }
 
     doSearch(keywords, type, post) {
@@ -570,7 +570,7 @@ class PaperBot {
         }
 
         this.stats.index.cache_expirations += 1;
-        this.doPaperIndexUpdate();
+        return this.doPaperIndexUpdate();
     }
 
     doPaperIndexUpdate() {
