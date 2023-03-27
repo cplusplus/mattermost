@@ -1,0 +1,10 @@
+version: '3.0'
+
+services:
+  paperbot:
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ./.env:/usr/src/app/.env:ro
+    ports:
+      - '3000:3000'
