@@ -468,45 +468,52 @@ class PaperBot {
                 return;
             }
 
-            try {
-                const result_list = displayed_results.map(
-                        (result) => '1. {0}'
-                        .format(this.message_formatter_factory
-                            .createFromInfo(...this.getPaperInfoByRef(result['id']))
-                            .formatMessage()))
-                    .join('\n');
+            const result_list = displayed_results.map(
+                    (result) => {
+                        this.stats.formattings_requested += 1;
 
-                let reply = results.length != 1 ? 'Found {0} results'.format(results.length) : '1 result';
-                reply += ' for your search ';
-                if (type !== undefined) {
-                    reply += 'for **{0}s**'.format(type);
-                } else {
-                    reply += 'for all documents';
-                }
-                reply += ' with the keywords: *{0}*'.format(keywords.join(', '));
+                        try {
+                            const formatted_result = '1. {0}'.format(
+                                this.message_formatter_factory
+                                    .createFromInfo(...this.getPaperInfoByRef(result['id']))
+                                    .formatMessage());
+                            this.stats.formattings_done += 1;
+                            return formatted_result;
+                        } catch {
+                            this.stats.formatting_errors += 1;
+                            return '*Error formatting response for {0}*'.format(reference);
+                        }
 
-                if (results.length != displayed_results.length) {
-                    reply += ', showing most recent {0} documents'.format(displayed_results.length);
-                }
-                reply += ':\n' + result_list;
+                    })
+                .join('\n');
 
-                let shortLink = (id) => {
-                    const [reference, info] = this.getPaperInfoByRef(id);
-                    const long_link = info['long_link'];
-                    return '[{0}]({1})'.format(reference, long_link);
-                }
-
-                if (further_results.length >= 1) {
-                    const lo = displayed_results.length + 1;
-                    const hi = lo + further_results.length - 1;
-                    reply += '\nAlso ({0}-{1}): '.format(lo, hi) + further_results.map((result) => shortLink(result['id'])).join(', ');
-                }
-
-                this.respondTo(post, reply)
-            } catch (e) {
-                console.log(e);
-                this.respondTo(post, 'An error occurred.');
+            let reply = results.length != 1 ? 'Found {0} results'.format(results.length) : '1 result';
+            reply += ' for your search ';
+            if (type !== undefined) {
+                reply += 'for **{0}s**'.format(type);
+            } else {
+                reply += 'for all documents';
             }
+            reply += ' with the keywords: *{0}*'.format(keywords.join(', '));
+
+            if (results.length != displayed_results.length) {
+                reply += ', showing most recent {0} documents'.format(displayed_results.length);
+            }
+            reply += ':\n' + result_list;
+
+            let shortLink = (id) => {
+                const [reference, info] = this.getPaperInfoByRef(id);
+                const long_link = info['long_link'];
+                return '[{0}]({1})'.format(reference, long_link);
+            }
+
+            if (further_results.length >= 1) {
+                const lo = displayed_results.length + 1;
+                const hi = lo + further_results.length - 1;
+                reply += '\nAlso ({0}-{1}): '.format(lo, hi) + further_results.map((result) => shortLink(result['id'])).join(', ');
+            }
+
+            this.respondTo(post, reply)
         });
     }
 
