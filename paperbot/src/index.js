@@ -1,5 +1,6 @@
 require('babel-polyfill');
 require('isomorphic-fetch');
+const moment = require('moment')
 if (!global.WebSocket) {
     global.WebSocket = require('ws');
 }
@@ -245,6 +246,7 @@ class PaperBot {
         this.registerCommand('help', this.handleHelpCommand);
         this.registerCommand('search', this.handleSearchCommand);
         this.registerCommand('version', this.handleVersionCommand);
+        this.registerCommand('uptime', this.handleUptimeCommand);
     }
 
     registerCommand(token, handler) {
@@ -278,6 +280,7 @@ class PaperBot {
                 help: 0,
                 search: 0,
                 version: 0,
+                uptime: 0,
             },
             index: {
                 update_checks_performed: 0,
@@ -422,6 +425,14 @@ class PaperBot {
 
         var pjson = require('../package.json');
         this.respondTo(post, 'Running PaperBot in Version {0}'.format(pjson.version));
+    }
+
+    handleUptimeCommand(post, message, tokenized) {
+        this.stats.commands.uptime += 1;
+
+        this.respondTo(post, 'PaperBot was started {0} ({1})'.format(
+            moment(this.launch_timestamp).fromNow(),
+            moment(this.launch_timestamp).format('YYYY-MM-DD HH:m:s')));
     }
 
     handleSearchCommand(post, message, tokenized) {
