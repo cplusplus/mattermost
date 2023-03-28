@@ -248,7 +248,7 @@ class PaperBot {
     }
 
     registerCommand(token, handler) {
-        this.commands[token] = (post, message, tokenized) => handler.bind(this)(post, message, tokenized);
+        this.commands[token.toLowerCase()] = (post, message, tokenized) => handler.bind(this)(post, message, tokenized);
     }
 
     initHealthCheckService() {
@@ -380,14 +380,14 @@ class PaperBot {
 
     handleChatMessage(post) {
         const message = post.message.replace(/@[a-zA-z0-9_-]+/g, '').trim();
-        const tokenized = message.split(/\b/).filter(token => token.trim().length != 0);
+        const tokenized = message.split(/\b/).filter(token => token.trim().length != 0).map((token) => token.toLowerCase());
 
         if (tokenized.length == 0) {
             this.stats.chat.ignored_posts += 1;
             return;
         }
 
-        const command_token = tokenized[0].toLowerCase();
+        const command_token = tokenized[0];
         if (command_token in this.commands) {
             this.stats.commands_handled += 1;
             this.commands[command_token](post, message, tokenized);
