@@ -247,6 +247,7 @@ class PaperBot {
         this.registerCommand('search', this.handleSearchCommand);
         this.registerCommand('version', this.handleVersionCommand);
         this.registerCommand('uptime', this.handleUptimeCommand);
+        this.registerCommand('updateindex', this.handleUpdateIndexCommand);
     }
 
     registerCommand(token, handler) {
@@ -281,6 +282,7 @@ class PaperBot {
                 search: 0,
                 version: 0,
                 uptime: 0,
+                updateIndex: 0,
             },
             index: {
                 update_checks_performed: 0,
@@ -433,6 +435,14 @@ class PaperBot {
         this.respondTo(post, 'PaperBot was started {0} ({1})'.format(
             moment(this.launch_timestamp).fromNow(),
             moment(this.launch_timestamp).format('YYYY-MM-DD HH:m:s')));
+    }
+
+    handleUpdateIndexCommand(post, message, tokenized) {
+        this.stats.commands.updateIndex += 1;
+
+        this.paper_index = {};
+        this.doPaperIndexUpdate();
+        this.respondTo(post, 'Index has been updated');
     }
 
     handleSearchCommand(post, message, tokenized) {
