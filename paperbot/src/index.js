@@ -542,7 +542,8 @@ class PaperBot {
         this.stats.chat.interactions += 1;
 
         const paper_request_in_brackets_regex = /\[((?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?)](?!\()/gi;
-        const papers_requested = [...post.message.matchAll(paper_request_in_brackets_regex)].map(m => m[1]);
+        const papers_requested = post.message.match(paper_request_in_brackets_regex).map(m => m.replace(/\[\]/,''));
+        console.log("handleBracketPaperRequest", "Papers requested", papers_requested);
         this.handlePaperRequest(post, papers_requested, false);
     }
 
@@ -550,7 +551,8 @@ class PaperBot {
         this.stats.paper_requests_handled += 1;
 
         const paper_request_regex = /(?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?/gi;
-        const papers_requested = [...post.message.matchAll(paper_request_regex)].map(m => m[0]);
+        const papers_requested = post.message.match(paper_request_regex).map(m => m.replace(/\[\]/,''));
+        console.log("handlePotentialPaperRequest", "Papers requested", papers_requested);
         this.handlePaperRequest(post, papers_requested, true);
     }
 
