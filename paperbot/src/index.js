@@ -550,7 +550,7 @@ class PaperBot {
         this.stats.paper_requests_handled += 1;
 
         const paper_request_regex = /(?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?/gi;
-        const papers_requested = [...post.message.matchAll(paper_request_regex)].map(m => m[0]);
+        const papers_requested = [...post.message.matchAll(paper_request_regex)].map(m => m[1]);
         this.handlePaperRequest(post, papers_requested, true);
     }
 
