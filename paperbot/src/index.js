@@ -4,6 +4,9 @@ const moment = require('moment')
 if (!global.WebSocket) {
     global.WebSocket = require('ws');
 }
+client = require('@mattermost/client');
+const Client4 = client.Client4;
+const WebSocketClient = client.WebSocketClient;
 
 if (!String.prototype.format) {
     String.prototype.format = function() {
@@ -302,22 +305,19 @@ class PaperBot {
     }
 
     initChatConnection(config) {
-        const Client4 = require('../node_modules/mattermost-redux/client/client4.js').default;
         this.client = new Client4;
-        this.wsClient = require('../node_modules/mattermost-redux/client/websocket_client.js').default;
+        this.wsClient = new WebSocketClient();
         const {
             Post,
             PostList,
             PostSearchResults,
             OpenGraphMetadata
-        } = require("../node_modules/mattermost-redux/types/posts");
+        } = require("@mattermost/types/posts");
 
         this.client.setUrl(config.apiUrl);
         this.client.setToken(config.token);
         this.client.setIncludeCookies(false);
-        this.wsClient.initialize(config.token, {
-            connectionUrl: config.websocketUrl
-        });
+        this.wsClient.initialize(config.websocketUrl, config.token);
 
         this.stats.api.requests_sent += 1;
         this.client.getMe().then((profile) => {
@@ -550,7 +550,7 @@ class PaperBot {
         this.stats.paper_requests_handled += 1;
 
         const paper_request_regex = /(?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?/gi;
-        const papers_requested = [...post.message.matchAll(paper_request_regex)].map(m => m[1]);
+        const papers_requested = [...post.message.matchAll(paper_request_regex)].map(m => m[0]);
         this.handlePaperRequest(post, papers_requested, true);
     }
 
