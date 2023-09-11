@@ -7,7 +7,7 @@ Paperbot currently responds to the following commands:
 | Command  | Description |
 | ------------- | ------------- |
 | `help`  | Responds with a short help message.  |
-| `search [papers|issues|everything] <keywords...>`  |  Searches for papers, issues or both (the default) matching the given keywords. |
+| `search [papers\|issues\|everything] <keywords...>`  |  Searches for papers, issues or both (the default) matching the given keywords. |
 | `version` | Returns the version of the bot. |
 | `uptime` | Responds with the uptime of the bot. |
 | `updateindex` | Force updating of the paper index. |
