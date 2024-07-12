@@ -326,6 +326,10 @@ class PaperBot {
 
             this.wsClient.setEventCallback((event) => this.handleNewPost(event));
         });
+
+        this.wsClient.addReconnectListener(() => {
+            process.exit(1);
+        });
     }
 
     handleHealthCheck(req, res) {
