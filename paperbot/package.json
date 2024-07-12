@@ -1,6 +1,6 @@
 {
   "name": "isocpp-mattermost-paperbot",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "",
   "main": "src/index.js",
   "scripts": {
@@ -9,14 +9,14 @@
   "author": "Sebastian Büttner <mail@bueddl.de>",
   "license": "MIT",
   "dependencies": {
+    "@mattermost/client": "^9.9.0",
+    "@mattermost/types": "^9.9.0",
     "babel-polyfill": "^6.26.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "isomorphic-fetch": "^3.0.0",
-    "@mattermost/client": "^8.1.1",
-    "@mattermost/types": "^8.1.1",
-    "tslib": "^2.5.0",
-    "express": "^4.18.2",
-    "dotenv": "^16.0.3",
     "moment": "2.29.4",
-    "ws": "8.14.1"
+    "tslib": "^2.6.3",
+    "ws": "^8.18.0"
   }
 }
