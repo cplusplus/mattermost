@@ -1,5 +1,6 @@
 require('babel-polyfill');
 require('isomorphic-fetch');
+const request = require("sync-request");
 const moment = require('moment')
 if (!global.WebSocket) {
     global.WebSocket = require('ws');
@@ -645,11 +646,53 @@ class PaperBot {
         };
 
         const [reference, key] = extractReferenceAndKeyFromRefOrId(reference_or_id);
-        const result = reference in this.paper_index && key in this.paper_index[reference] ?
-            [key, this.paper_index[reference][key]] :
-            [reference_or_id, undefined];
 
-        return result;
+        if (reference in this.paper_index && key in this.paper_index[reference]) {
+            return [key, this.paper_index[reference][key]];
+        } else {
+            const url = "http://wg21.link/" + key;
+            try {
+                const res = request("HEAD", url);
+                if (res.statusCode == 200) {
+                    if (!(reference in this.paper_index)) {
+                        this.paper_index[reference] = {};
+                    }
+                    
+                    let data = {
+                        'type': 'paper',
+                        'author': 'unknown',
+                        'link': "https://wg21.link/" + key,
+                        'date': "unknown",
+                        "title": key,
+                    };
+                    data["long_link"] = data["link"];
+
+                    this.paper_index[reference][key] = data;
+
+                    if ("_" in this.paper_index[reference]) {
+                        const base_paper = this.paper_index[reference][this.paper_index[reference]["_"]];
+                        if ("author" in base_paper) {
+                            data["author"] = base_paper["author"];
+                        }
+                        if ("title" in base_paper) {
+                            data["title"] = base_paper["title"];
+                        }
+                        if ("github_url" in base_paper) {
+                            data["github_url"] = base_paper["github_url"];
+                        }
+                        if ("subgroup" in base_paper) {
+                            data["subgroup"] = base_paper["subgroup"];
+                        }
+                    }
+
+                    return [key, this.paper_index[reference][key]];
+                }
+            } catch (error) {
+                console.error("Request failed:", error);
+            }
+
+            return [reference_or_id, undefined];
+        }
     }
 
     searchPapers(keywords, type) {
