@@ -1,0 +1,2 @@
+include:
+  - paperbot/paperbot.gitlab-ci.yml
