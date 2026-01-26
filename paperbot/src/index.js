@@ -277,6 +277,9 @@ class PaperBot {
             api: {
                 requests_sent: 0,
                 responses_handled: 0,
+                missed_events: 0,
+                errors: 0,
+                closed: 0,
             },
             paper_requests_handled: 0,
             commands_handled: 0,
@@ -317,6 +320,45 @@ class PaperBot {
         this.client.setUrl(config.apiUrl);
         this.client.setToken(config.token);
         this.client.setIncludeCookies(false);
+
+        // There is currently an undocumented condition (call it a bug) in the
+        // mattermost websocket API which causes the sequence number only to be
+        // reset after connection disruption if *any* missed message listener is
+        // installed. It does not matter what this handler does in the end.
+        // For details, see related issue: 
+        // https://github.com/mattermost/mattermost/issues/30388
+        this.wsClient.addMissedMessageListener((data) => {
+            this.stats.api.missed_events += 1;
+
+            const seq = data?.seq ?? data?.server_sequence ?? '?';
+            const missed = data?.missed ?? '?';
+
+            console.warn(
+                '[ws] missed event(s); sequence gap detected ' +
+                `(seq=${seq}, missed=${missed}). ` +
+                'State may be inconsistent.'
+            );
+        });
+
+        this.wsClient.addErrorListener((err) => {
+            this.stats.api.errors += 1;
+
+            console.error(
+                '[ws] websocket error:',
+                err && err.message ? err.message : err
+            );
+        });
+
+        this.wsClient.addCloseListener((code, reason) => {
+            this.stats.api.closed += 1;
+
+            console.warn(
+                '[ws] websocket closed ' +
+                `(code=${code ?? 'unknown'}, reason=${reason ?? 'none'}). ` +
+                'Reconnect will be attempted.'
+            );
+        });
+
         this.wsClient.initialize(config.websocketUrl, config.token);
 
         this.stats.api.requests_sent += 1;
@@ -324,7 +366,7 @@ class PaperBot {
             this.stats.api.responses_handled += 1;
             this.me = profile;
 
-            this.wsClient.setEventCallback((event) => this.handleNewPost(event));
+            this.wsClient.addMessageListener((event) => this.handleNewPost(event));
         });
     }
 
