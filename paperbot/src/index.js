@@ -1,6 +1,6 @@
 require('babel-polyfill');
 require('isomorphic-fetch');
-const moment = require('moment')
+const moment = require('moment');
 if (!global.WebSocket) {
     global.WebSocket = require('ws');
 }
@@ -9,25 +9,22 @@ const Client4 = client.Client4;
 const WebSocketClient = client.WebSocketClient;
 
 if (!String.prototype.format) {
-    String.prototype.format = function() {
+    String.prototype.format = function () {
         var args = arguments;
-        return this.replace(/{(\d+)}/g, function(match, number) {
-            return typeof args[number] != 'undefined' ?
-                args[number] :
-                match;
+        return this.replace(/{(\d+)}/g, function (match, number) {
+            return typeof args[number] != 'undefined' ? args[number] : match;
         });
     };
 }
 
-
 class MessageFormatter {
     constructor(reference, info) {
-        this.reference = reference
-        this.info = info
+        this.reference = reference;
+        this.info = info;
     }
 
     formatMessage() {
-        throw new Error("Not Yet Implemented");
+        throw new Error('Not Yet Implemented');
     }
 
     createLink(text, url) {
@@ -42,28 +39,28 @@ class MessageFormatter {
         const authors = this.info.author.split(', ');
         const number_of_authors = authors.length;
         if (number_of_authors <= 2) {
-            return authors.join(', ')
+            return authors.join(', ');
         } else {
-            return '{0} et al.'.format(authors[0])
+            return '{0} et al.'.format(authors[0]);
         }
     }
 
     getAudience() {
         function translateSubgroup(subgroup) {
             const map = {
-                'Core': 'CWG',
-                'Evolution': 'EWG',
-                'Library': 'LWG',
+                Core: 'CWG',
+                Evolution: 'EWG',
+                Library: 'LWG',
                 'Library Evolution': 'LEWG',
                 'Direction Group': 'DG',
                 'Library Evolution Incubator': 'LEWGI',
                 'Evolution Incubator': 'EWGI',
-            }
+            };
 
             return subgroup in map ? map[subgroup] : subgroup;
         }
 
-        const subgroups = this.info.subgroup.split(', ')
+        const subgroups = this.info.subgroup.split(', ');
 
         return [subgroups.map((subgroup) => translateSubgroup(subgroup))].join(', ');
     }
@@ -74,7 +71,9 @@ class MessageFormatter {
         }
 
         const github_issue_no = this.info.github_url.match(/\/issues\/(\d+)/)[1];
-        const github_link = 'Github issue: ' + this.createLink('#{0}'.format(github_issue_no), this.info.github_url);
+        const github_link =
+            'Github issue: ' +
+            this.createLink('#{0}'.format(github_issue_no), this.info.github_url);
 
         return [github_link];
     }
@@ -85,7 +84,16 @@ class MessageFormatter {
         }
 
         const heading = this.info.issues.length == 1 ? 'Related issue: ' : 'Related issues: ';
-        const related_issues = heading + this.info.issues.map((issue_reference) => this.createLink(issue_reference, 'https://wg21.link/{0}'.format(issue_reference))).join(', ');
+        const related_issues =
+            heading +
+            this.info.issues
+                .map((issue_reference) =>
+                    this.createLink(
+                        issue_reference,
+                        'https://wg21.link/{0}'.format(issue_reference)
+                    )
+                )
+                .join(', ');
         return [related_issues];
     }
 
@@ -96,7 +104,16 @@ class MessageFormatter {
 
         const heading = this.info.papers.length == 1 ? 'Related paper: ' : 'Related papers: ';
 
-        const related_papers = heading + this.info.papers.map((paper_reference) => this.createLink(paper_reference, 'https://wg21.link/{0}'.format(paper_reference))).join(', ');
+        const related_papers =
+            heading +
+            this.info.papers
+                .map((paper_reference) =>
+                    this.createLink(
+                        paper_reference,
+                        'https://wg21.link/{0}'.format(paper_reference)
+                    )
+                )
+                .join(', ');
         return [related_papers];
     }
 
@@ -105,21 +122,21 @@ class MessageFormatter {
     }
 }
 
-
 class IssueMessageFormatter extends MessageFormatter {
     formatMessage() {
-        return this.formatMessageComponents([':speech_balloon:',
+        return this.formatMessageComponents([
+            ':speech_balloon:',
             ...this.paperLinkComponent(),
             ...this.sectionComponent(),
             ...this.githubComponent(),
-            ...this.relatedPapersComponent()
-        ])
+            ...this.relatedPapersComponent(),
+        ]);
     }
 
     paperLinkComponent() {
         const title = this.info.title;
 
-        let extra_info = ''
+        let extra_info = '';
         if ('submitter' in this.info) {
             const submitter = this.info.submitter;
             extra_info += 'submitted by {0}'.format(submitter);
@@ -144,13 +161,13 @@ class IssueMessageFormatter extends MessageFormatter {
     }
 }
 
-
 class PaperMessageFormatter extends MessageFormatter {
     formatMessage() {
-        return this.formatMessageComponents([':rolled_up_newspaper:',
+        return this.formatMessageComponents([
+            ':rolled_up_newspaper:',
             ...this.paperLinkComponent(),
             ...this.githubComponent(),
-            ...this.relatedIssuesComponent()
+            ...this.relatedIssuesComponent(),
         ]);
     }
 
@@ -163,7 +180,7 @@ class PaperMessageFormatter extends MessageFormatter {
             text += ' {0}'.format(title);
         }
 
-        let extra_info = ''
+        let extra_info = '';
         if ('author' in this.info) {
             extra_info += ' by {0}'.format(this.getAuthors());
         }
@@ -177,11 +194,11 @@ class PaperMessageFormatter extends MessageFormatter {
     }
 }
 
-
 class EditorialMessageFormatter extends MessageFormatter {
     formatMessage() {
-        return this.formatMessageComponents([':lower_left_ballpoint_pen: ',
-            ...this.paperLinkComponent()
+        return this.formatMessageComponents([
+            ':lower_left_ballpoint_pen: ',
+            ...this.paperLinkComponent(),
         ]);
     }
 
@@ -192,13 +209,10 @@ class EditorialMessageFormatter extends MessageFormatter {
         return [paper_link];
     }
 }
-
 
 class StandingDocumentMessageFormatter extends MessageFormatter {
     formatMessage() {
-        return this.formatMessageComponents([':compass:',
-            ...this.paperLinkComponent()
-        ]);
+        return this.formatMessageComponents([':compass:', ...this.paperLinkComponent()]);
     }
 
     paperLinkComponent() {
@@ -209,22 +223,23 @@ class StandingDocumentMessageFormatter extends MessageFormatter {
     }
 }
 
-
 class NotFoundMessageFormatter extends MessageFormatter {
     formatMessage() {
-        return this.formatMessageComponents([':mag:',
-            'Sorry, I could not find an issue or paper called `{0}` :worried:'.format(this.reference)
+        return this.formatMessageComponents([
+            ':mag:',
+            'Sorry, I could not find an issue or paper called `{0}` :worried:'.format(
+                this.reference
+            ),
         ]);
     }
 }
-
 
 class MessageFormatterFactory {
     createFromInfo(reference, info) {
         const builders = {
-            'issue': IssueMessageFormatter,
-            'paper': PaperMessageFormatter,
-            'editorial': EditorialMessageFormatter,
+            issue: IssueMessageFormatter,
+            paper: PaperMessageFormatter,
+            editorial: EditorialMessageFormatter,
             'standing-document': StandingDocumentMessageFormatter,
         };
 
@@ -254,16 +269,17 @@ class PaperBot {
     }
 
     registerCommand(token, handler) {
-        this.commands[token.toLowerCase()] = (post, message, tokenized) => handler.bind(this)(post, message, tokenized);
+        this.commands[token.toLowerCase()] = (post, message, tokenized) =>
+            handler.bind(this)(post, message, tokenized);
     }
 
     initHealthCheckService() {
         const pjson = require('../package.json');
         this.launch_timestamp = new Date();
 
-        const express = require('express')
-        this.express = express()
-        this.express.get("/health", (req, res) => this.handleHealthCheck(req, res));
+        const express = require('express');
+        this.express = express();
+        this.express.get('/health', (req, res) => this.handleHealthCheck(req, res));
         this.stats = {
             version: pjson.version,
             uptime: 0,
@@ -303,19 +319,19 @@ class PaperBot {
             formattings_requested: 0,
             formattings_done: 0,
             formatting_errors: 0,
-        }
-        this.express.listen(3000)
+        };
+        this.express.listen(3000);
     }
 
     initChatConnection(config) {
-        this.client = new Client4;
+        this.client = new Client4();
         this.wsClient = new WebSocketClient();
         const {
             Post,
             PostList,
             PostSearchResults,
-            OpenGraphMetadata
-        } = require("@mattermost/types/posts");
+            OpenGraphMetadata,
+        } = require('@mattermost/types/posts');
 
         this.client.setUrl(config.apiUrl);
         this.client.setToken(config.token);
@@ -325,7 +341,7 @@ class PaperBot {
         // mattermost websocket API which causes the sequence number only to be
         // reset after connection disruption if *any* missed message listener is
         // installed. It does not matter what this handler does in the end.
-        // For details, see related issue: 
+        // For details, see related issue:
         // https://github.com/mattermost/mattermost/issues/30388
         this.wsClient.addMissedMessageListener((data) => {
             this.stats.api.missed_events += 1;
@@ -335,18 +351,15 @@ class PaperBot {
 
             console.warn(
                 '[ws] missed event(s); sequence gap detected ' +
-                `(seq=${seq}, missed=${missed}). ` +
-                'State may be inconsistent.'
+                    `(seq=${seq}, missed=${missed}). ` +
+                    'State may be inconsistent.'
             );
         });
 
         this.wsClient.addErrorListener((err) => {
             this.stats.api.errors += 1;
 
-            console.error(
-                '[ws] websocket error:',
-                err && err.message ? err.message : err
-            );
+            console.error('[ws] websocket error:', err && err.message ? err.message : err);
         });
 
         this.wsClient.addCloseListener((code, reason) => {
@@ -354,8 +367,8 @@ class PaperBot {
 
             console.warn(
                 '[ws] websocket closed ' +
-                `(code=${code ?? 'unknown'}, reason=${reason ?? 'none'}). ` +
-                'Reconnect will be attempted.'
+                    `(code=${code ?? 'unknown'}, reason=${reason ?? 'none'}). ` +
+                    'Reconnect will be attempted.'
             );
         });
 
@@ -372,7 +385,7 @@ class PaperBot {
 
     handleHealthCheck(req, res) {
         this.stats.uptime = new Date() - this.launch_timestamp;
-        res.json(this.stats)
+        res.json(this.stats);
     }
 
     handleNewPost(event) {
@@ -398,7 +411,7 @@ class PaperBot {
 
         const message = post.message.trim();
 
-        const bot_is_mentioned = message.includes("@{0}".format(this.me.username));
+        const bot_is_mentioned = message.includes('@{0}'.format(this.me.username));
         if (bot_is_mentioned) {
             this.handleChatMessage(post);
             return;
@@ -410,9 +423,11 @@ class PaperBot {
 
             const is_direct_message = channel.type == 'D';
             if (!is_direct_message) {
-                const contains_paper_reference_in_brackets = message.match(/\[((?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?)](?!\()/i) !== null;
+                const contains_paper_reference_in_brackets =
+                    message.match(/\[((?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?)](?!\()/i) !==
+                    null;
                 if (contains_paper_reference_in_brackets) {
-                    this.handleBracketPaperRequest(post)
+                    this.handleBracketPaperRequest(post);
                     return;
                 }
 
@@ -422,12 +437,14 @@ class PaperBot {
 
             this.handleChatMessage(post);
         });
-
     }
 
     handleChatMessage(post) {
         const message = post.message.replace(/@[a-zA-z0-9_-]+/g, '').trim();
-        const tokenized = message.split(/\b/).filter(token => token.trim().length != 0).map((token) => token.toLowerCase());
+        const tokenized = message
+            .split(/\b/)
+            .filter((token) => token.trim().length != 0)
+            .map((token) => token.toLowerCase());
 
         if (tokenized.length == 0) {
             this.stats.chat.ignored_posts += 1;
@@ -447,20 +464,22 @@ class PaperBot {
     respondTo(post, message) {
         this.stats.chat.posts_sent += 1;
         this.client.createPost({
-            'message': message,
-            'channel_id': post.channel_id,
-            'root_id': post.root_id
+            message: message,
+            channel_id: post.channel_id,
+            root_id: post.root_id,
         });
     }
 
     handleHelpCommand(post, message, tokenized) {
         this.stats.commands.help += 1;
 
-        const help = (":book: | Usage: \"@{0} search [papers|issues|everything] <keywords>\"\n" +
-            "                  or \"@{0} <Nxxxx|Pxxxx|PxxxxRx|Dxxxx|DxxxxRx|CWGxxx|EWGxxx|LWGxxx|LEWGxxx|FSxxx>\"\n" +
-            "\n" +
-            "Paperbot will also lookup any paper posted in square brackets, even without being mentioned.\n" +
-            "In a DM with the paperbot only you do not need to mention it.").format(this.me.username);
+        const help = (
+            ':book: | Usage: "@{0} search [papers|issues|everything] <keywords>"\n' +
+            '                  or "@{0} <Nxxxx|Pxxxx|PxxxxRx|Dxxxx|DxxxxRx|CWGxxx|EWGxxx|LWGxxx|LEWGxxx|FSxxx>"\n' +
+            '\n' +
+            'Paperbot will also lookup any paper posted in square brackets, even without being mentioned.\n' +
+            'In a DM with the paperbot only you do not need to mention it.'
+        ).format(this.me.username);
         this.respondTo(post, help);
     }
 
@@ -474,9 +493,13 @@ class PaperBot {
     handleUptimeCommand(post, message, tokenized) {
         this.stats.commands.uptime += 1;
 
-        this.respondTo(post, 'PaperBot was started {0} ({1})'.format(
-            moment(this.launch_timestamp).fromNow(),
-            moment(this.launch_timestamp).format('YYYY-MM-DD HH:m:s')));
+        this.respondTo(
+            post,
+            'PaperBot was started {0} ({1})'.format(
+                moment(this.launch_timestamp).fromNow(),
+                moment(this.launch_timestamp).format('YYYY-MM-DD HH:m:s')
+            )
+        );
     }
 
     handleUpdateIndexCommand(post, message, tokenized) {
@@ -491,7 +514,7 @@ class PaperBot {
         this.stats.commands.search += 1;
 
         if (tokenized.length < 2) {
-            this.respondTo(post, "Invalid search command, see help for how to use the search.");
+            this.respondTo(post, 'Invalid search command, see help for how to use the search.');
             return;
         }
 
@@ -526,31 +549,32 @@ class PaperBot {
                 } else {
                     reply += 'for all documents';
                 }
-                reply += ' with the keywords: *{0}*'.format(keywords.join(", "));
+                reply += ' with the keywords: *{0}*'.format(keywords.join(', '));
                 this.respondTo(post, reply);
                 return;
             }
 
-            const result_list = displayed_results.map(
-                    (result) => {
-                        this.stats.formattings_requested += 1;
+            const result_list = displayed_results
+                .map((result) => {
+                    this.stats.formattings_requested += 1;
 
-                        try {
-                            const formatted_result = '1. {0}'.format(
-                                this.message_formatter_factory
-                                    .createFromInfo(...this.getPaperInfoByRef(result['id']))
-                                    .formatMessage());
-                            this.stats.formattings_done += 1;
-                            return formatted_result;
-                        } catch {
-                            this.stats.formatting_errors += 1;
-                            return '*Error formatting response for {0}*'.format(reference);
-                        }
-
-                    })
+                    try {
+                        const formatted_result = '1. {0}'.format(
+                            this.message_formatter_factory
+                                .createFromInfo(...this.getPaperInfoByRef(result['id']))
+                                .formatMessage()
+                        );
+                        this.stats.formattings_done += 1;
+                        return formatted_result;
+                    } catch {
+                        this.stats.formatting_errors += 1;
+                        return '*Error formatting response for {0}*'.format(reference);
+                    }
+                })
                 .join('\n');
 
-            let reply = results.length != 1 ? 'Found {0} results'.format(results.length) : '1 result';
+            let reply =
+                results.length != 1 ? 'Found {0} results'.format(results.length) : '1 result';
             reply += ' for your search ';
             if (type !== undefined) {
                 reply += 'for **{0}s**'.format(type);
@@ -568,23 +592,28 @@ class PaperBot {
                 const [reference, info] = this.getPaperInfoByRef(id);
                 const long_link = info['long_link'];
                 return '[{0}]({1})'.format(reference, long_link);
-            }
+            };
 
             if (further_results.length >= 1) {
                 const lo = displayed_results.length + 1;
                 const hi = lo + further_results.length - 1;
-                reply += '\nAlso ({0}-{1}): '.format(lo, hi) + further_results.map((result) => shortLink(result['id'])).join(', ');
+                reply +=
+                    '\nAlso ({0}-{1}): '.format(lo, hi) +
+                    further_results.map((result) => shortLink(result['id'])).join(', ');
             }
 
-            this.respondTo(post, reply)
+            this.respondTo(post, reply);
         });
     }
 
     handleBracketPaperRequest(post) {
         this.stats.chat.interactions += 1;
 
-        const paper_request_in_brackets_regex = /\[((?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?)](?!\()/gi;
-        const papers_requested = [...post.message.matchAll(paper_request_in_brackets_regex)].map(m => m[1]);
+        const paper_request_in_brackets_regex =
+            /\[((?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?)](?!\()/gi;
+        const papers_requested = [...post.message.matchAll(paper_request_in_brackets_regex)].map(
+            (m) => m[1]
+        );
         this.handlePaperRequest(post, papers_requested, false);
     }
 
@@ -592,12 +621,12 @@ class PaperBot {
         this.stats.paper_requests_handled += 1;
 
         const paper_request_regex = /(?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?/gi;
-        const papers_requested = [...post.message.matchAll(paper_request_regex)].map(m => m[0]);
+        const papers_requested = [...post.message.matchAll(paper_request_regex)].map((m) => m[0]);
         this.handlePaperRequest(post, papers_requested, true);
     }
 
     handlePaperRequest(post, papers_requested, bot_was_mentioned) {
-        let papers = papers_requested.filter(function(value, index, array) {
+        let papers = papers_requested.filter(function (value, index, array) {
             return array.indexOf(value) === index;
         });
         if (papers.length == 0) {
@@ -612,18 +641,24 @@ class PaperBot {
         }
 
         this.ensurePaperIndexUpdated().then(() => {
-            const message = papers.map((ref) => this.getPaperInfoByRef(ref)).map(([reference, paper_info]) => {
-                this.stats.formattings_requested += 1;
-                try {
-                    const formatter = this.message_formatter_factory.createFromInfo(reference, paper_info);
-                    const formatted_message = formatter.formatMessage();
-                    this.stats.formattings_done += 1;
-                    return formatted_message;
-                } catch {
-                    this.stats.formatting_errors += 1;
-                    return '*Error formatting response for {0}*'.format(reference);
-                }
-            }).join("\n");
+            const message = papers
+                .map((ref) => this.getPaperInfoByRef(ref))
+                .map(([reference, paper_info]) => {
+                    this.stats.formattings_requested += 1;
+                    try {
+                        const formatter = this.message_formatter_factory.createFromInfo(
+                            reference,
+                            paper_info
+                        );
+                        const formatted_message = formatter.formatMessage();
+                        this.stats.formattings_done += 1;
+                        return formatted_message;
+                    } catch {
+                        this.stats.formatting_errors += 1;
+                        return '*Error formatting response for {0}*'.format(reference);
+                    }
+                })
+                .join('\n');
 
             this.respondTo(post, message);
         });
@@ -657,7 +692,7 @@ class PaperBot {
 
         return new Promise((resolve, reject) => {
             fetch(process.env.PAPER_INDEX_URL, {
-                cache: "default"
+                cache: 'default',
             }).then((response) => {
                 response.json().then((index_data) => {
                     this.stats.index.updates_successful += 1;
@@ -682,14 +717,20 @@ class PaperBot {
             if (m !== null) {
                 return [m[1], reference_or_id];
             } else {
-                return [reference_or_id, reference_or_id in this.paper_index ? this.paper_index[reference_or_id]['_'] : '_'];
+                return [
+                    reference_or_id,
+                    reference_or_id in this.paper_index
+                        ? this.paper_index[reference_or_id]['_']
+                        : '_',
+                ];
             }
         };
 
         const [reference, key] = extractReferenceAndKeyFromRefOrId(reference_or_id);
-        const result = reference in this.paper_index && key in this.paper_index[reference] ?
-            [key, this.paper_index[reference][key]] :
-            [reference_or_id, undefined];
+        const result =
+            reference in this.paper_index && key in this.paper_index[reference]
+                ? [key, this.paper_index[reference][key]]
+                : [reference_or_id, undefined];
 
         return result;
     }
@@ -700,8 +741,10 @@ class PaperBot {
                 return false;
             }
 
-            return keywords.map((keyword) => entry['keywords'].includes(keyword)).every(v => v === true);
-        }
+            return keywords
+                .map((keyword) => entry['keywords'].includes(keyword))
+                .every((v) => v === true);
+        };
 
         keywords = keywords.map((kw) => kw.toLowerCase());
         const result = this.search_index.filter((entry) => matchesSearch(entry));
@@ -715,7 +758,7 @@ class PaperBot {
         let extractReferenceAndRevisionFromRef = (id) => {
             const m = reference_and_revision_regex.exec(id);
             return m !== null ? [m[1], parseInt(m[2])] : [id, 0];
-        }
+        };
 
         let updated_index = {};
         Object.entries(index_payload).forEach(([id, info]) => {
@@ -725,7 +768,10 @@ class PaperBot {
             }
 
             updated_index[reference][id] = info;
-            let [_, latest_revision] = '_' in updated_index[reference] ? extractReferenceAndRevisionFromRef(updated_index[reference]['_']) : [undefined, 0];
+            let [_, latest_revision] =
+                '_' in updated_index[reference]
+                    ? extractReferenceAndRevisionFromRef(updated_index[reference]['_'])
+                    : [undefined, 0];
             if (revision >= latest_revision) {
                 updated_index[reference]['_'] = id;
             }
@@ -743,27 +789,33 @@ class PaperBot {
 
         this.search_index = Object.entries(this.paper_index).map(([reference, document]) => {
             return {
-                'id': reference,
-                'type': document[document['_']]['type'],
-                'date': getDate(document[document['_']]),
-                'keywords': Object.entries(document).filter(([key, _]) => key != '_').map(([key, data]) => '{0} {1} {2} {3} {4}'.format(
-                    key,
-                    data['title'],
-                    'section' in data ? data['section'] : '',
-                    'submitter' in data ? data['submitter'] : '',
-                    'author' in data ? data['author'] : '',
-                )).join(' ').toLowerCase()
-            }
+                id: reference,
+                type: document[document['_']]['type'],
+                date: getDate(document[document['_']]),
+                keywords: Object.entries(document)
+                    .filter(([key, _]) => key != '_')
+                    .map(([key, data]) =>
+                        '{0} {1} {2} {3} {4}'.format(
+                            key,
+                            data['title'],
+                            'section' in data ? data['section'] : '',
+                            'submitter' in data ? data['submitter'] : '',
+                            'author' in data ? data['author'] : ''
+                        )
+                    )
+                    .join(' ')
+                    .toLowerCase(),
+            };
         });
 
         this.stats.index.search_index_rebuilt += 1;
     }
 }
 
-require('dotenv').config()
+require('dotenv').config();
 
 let bot = new PaperBot({
     token: process.env.MATTERMOST_TOKEN,
     apiUrl: process.env.MATTERMOST_API_URL,
     websocketUrl: process.env.MATTERMOST_WEBSOCKER_URL,
-})
+});

@@ -1,14 +1,11 @@
 {
     "name": "Development",
-	"build": {
-		"dockerfile": "Dockerfile"
-	}
-	"customizations": {
-		"vscode": {
-			"extensions": [
-				"ms-azuretools.vscode-docker",
-                "ms-vscode.js-debug"
-			]
-		}
-	}
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": ["ms-azuretools.vscode-docker", "ms-vscode.js-debug"]
+        }
+    }
 }
