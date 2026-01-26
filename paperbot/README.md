@@ -4,15 +4,16 @@
 
 Paperbot currently responds to the following commands:
 
-| Command  | Description |
-| ------------- | ------------- |
-| `help`  | Responds with a short help message.  |
-| `search [papers\|issues\|everything] <keywords...>`  |  Searches for papers, issues or both (the default) matching the given keywords. |
-| `version` | Returns the version of the bot. |
-| `uptime` | Responds with the uptime of the bot. |
-| `updateindex` | Force updating of the paper index. |
+| Command                                             | Description                                                                    |
+| --------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `help`                                              | Responds with a short help message.                                            |
+| `search [papers\|issues\|everything] <keywords...>` | Searches for papers, issues or both (the default) matching the given keywords. |
+| `version`                                           | Returns the version of the bot.                                                |
+| `uptime`                                            | Responds with the uptime of the bot.                                           |
+| `updateindex`                                       | Force updating of the paper index.                                             |
 
 In channels and in DMs with more than two accounts involved paperbot only responds either if mentioned in the message or if the paper number is put in square brackets, for example:
+
 > @paperbot P1000 P2000
 
 > [P1000] [P2000]
