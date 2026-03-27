@@ -257,23 +257,12 @@ class MessageFormatterFactory {
 }
 
 class PaperBot {
-    constructor(config) {
+    constructor() {
         this.initHealthCheckService();
         this.initPaperIndex();
         this.initCommands();
-        this.initChatConnection(config);
 
         this.message_formatter_factory = new MessageFormatterFactory();
-
-        logMain.info(
-            {
-                hasToken: Boolean(config.token),
-                apiUrlHost: safeHost(config.apiUrl),
-                websocketUrlHost: safeHost(config.websocketUrl),
-                paperIndexUrlHost: safeHost(process.env.PAPER_INDEX_URL),
-            },
-            'PaperBot initialized'
-        );
     }
 
     initCommands() {
@@ -286,8 +275,8 @@ class PaperBot {
     }
 
     registerCommand(token, handler) {
-        this.commands[token.toLowerCase()] = (post, message, tokenized) =>
-            handler.bind(this)(post, message, tokenized);
+        this.commands[token.toLowerCase()] = async (post, message, tokenized) =>
+            await handler.bind(this)(post, message, tokenized);
     }
 
     initHealthCheckService() {
@@ -345,7 +334,7 @@ class PaperBot {
         });
     }
 
-    initChatConnection(config) {
+    async initChatConnection(config) {
         this.client = new Client4();
         this.wsClient = new WebSocketClient();
 
@@ -392,23 +381,21 @@ class PaperBot {
 
         this.stats.api.requests_sent += 1;
         logApi.info('Fetching bot profile via getMe()');
-        this.client
-            .getMe()
-            .then((profile) => {
-                this.stats.api.responses_handled += 1;
-                this.me = profile;
+        let profile;
+        try {
+            profile = await this.client.getMe();
+        } catch (err) {
+            logApi.error({ err }, 'getMe() failed; bot will not process events');
+            return;
+        }
 
-                logApi.info(
-                    { id: this.me?.id, username: this.me?.username },
-                    'Authenticated as bot user'
-                );
+        this.stats.api.responses_handled += 1;
+        this.me = profile;
 
-                this.wsClient.addMessageListener((event) => this.handleNewPost(event));
-                logWs.info('Websocket message listener installed');
-            })
-            .catch((err) => {
-                logApi.error({ err }, 'getMe() failed; bot will not process events');
-            });
+        logApi.info({ id: this.me?.id, username: this.me?.username }, 'Authenticated as bot user');
+
+        this.wsClient.addMessageListener(async (event) => await this.handleNewPost(event));
+        logWs.info('Websocket message listener installed');
     }
 
     handleHealthCheck(req, res) {
@@ -416,7 +403,7 @@ class PaperBot {
         res.json(this.stats);
     }
 
-    handleNewPost(event) {
+    async handleNewPost(event) {
         this.stats.chat.handled_events += 1;
 
         logWs.trace({ event: event?.event }, 'Received websocket event');
@@ -466,55 +453,51 @@ class PaperBot {
         const bot_is_mentioned = message.includes('@{0}'.format(this.me.username));
         if (bot_is_mentioned) {
             logWs.debug({ channel_id: post.channel_id }, 'Bot mentioned; handling as chat message');
-            this.handleChatMessage(post);
+            await this.handleChatMessage(post);
             return;
         }
 
         this.stats.api.requests_sent += 1;
-        this.client
-            .getChannel(post.channel_id)
-            .then((channel) => {
-                this.stats.api.responses_handled += 1;
+        let channel;
+        try {
+            channel = await this.client.getChannel(post.channel_id);
+        } catch (err) {
+            logApi.error(
+                { err, channel_id: post.channel_id },
+                'getChannel() failed; cannot classify message'
+            );
+            return;
+        }
 
-                const is_direct_message = channel.type == 'D';
-                if (!is_direct_message) {
-                    const contains_paper_reference_in_brackets =
-                        message.match(
-                            /\[((?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?)](?!\()/i
-                        ) !== null;
+        this.stats.api.responses_handled += 1;
 
-                    if (contains_paper_reference_in_brackets) {
-                        logWs.debug(
-                            { channel_id: post.channel_id },
-                            'Bracketed paper reference detected in non-DM; handling'
-                        );
-                        this.handleBracketPaperRequest(post);
-                        return;
-                    }
+        const is_direct_message = channel.type == 'D';
+        if (!is_direct_message) {
+            const contains_paper_reference_in_brackets =
+                message.match(/\[((?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?)](?!\()/i) !== null;
 
-                    this.stats.chat.ignored_posts += 1;
-                    logWs.trace(
-                        { channel_id: post.channel_id },
-                        'Ignoring non-DM message without bracket request'
-                    );
-                    return;
-                }
-
+            if (contains_paper_reference_in_brackets) {
                 logWs.debug(
                     { channel_id: post.channel_id },
-                    'Direct message; handling as chat message'
+                    'Bracketed paper reference detected in non-DM; handling'
                 );
-                this.handleChatMessage(post);
-            })
-            .catch((err) => {
-                logApi.error(
-                    { err, channel_id: post.channel_id },
-                    'getChannel() failed; cannot classify message'
-                );
-            });
+                await this.handleBracketPaperRequest(post);
+                return;
+            }
+
+            this.stats.chat.ignored_posts += 1;
+            logWs.trace(
+                { channel_id: post.channel_id },
+                'Ignoring non-DM message without bracket request'
+            );
+            return;
+        }
+
+        logWs.debug({ channel_id: post.channel_id }, 'Direct message; handling as chat message');
+        await this.handleChatMessage(post);
     }
 
-    handleChatMessage(post) {
+    async handleChatMessage(post) {
         const message = post.message.replace(/@[a-zA-z0-9_-]+/g, '').trim();
         const tokenized = message
             .split(/\b/)
@@ -531,15 +514,15 @@ class PaperBot {
         if (command_token in this.commands) {
             this.stats.commands_handled += 1;
             logCmd.info({ command: command_token }, 'Handling command');
-            this.commands[command_token](post, message, tokenized);
+            await this.commands[command_token](post, message, tokenized);
             return;
         }
 
         logWs.debug('No command recognized; treating message as potential paper request');
-        this.handlePotentialPaperRequest(post);
+        await this.handlePotentialPaperRequest(post);
     }
 
-    respondTo(post, message) {
+    async respondTo(post, message) {
         this.stats.chat.posts_sent += 1;
 
         logApi.debug(
@@ -551,18 +534,19 @@ class PaperBot {
             'Sending post reply'
         );
 
-        this.client
-            .createPost({
+        try {
+            await this.client.createPost({
                 message: message,
                 channel_id: post.channel_id,
                 root_id: post.root_id,
-            })
-            .catch((err) => {
-                logApi.error({ err, channel_id: post.channel_id }, 'createPost() failed');
             });
+        } catch (err) {
+            logApi.error({ err, channel_id: post.channel_id }, 'createPost() failed');
+            return;
+        }
     }
 
-    handleHelpCommand(post, message, tokenized) {
+    async handleHelpCommand(post, message, tokenized) {
         this.stats.commands.help += 1;
 
         const help = (
@@ -573,20 +557,20 @@ class PaperBot {
             'In a DM with the paperbot only you do not need to mention it.'
         ).format(this.me.username);
 
-        this.respondTo(post, help);
+        await this.respondTo(post, help);
     }
 
-    handleVersionCommand(post, message, tokenized) {
+    async handleVersionCommand(post, message, tokenized) {
         this.stats.commands.version += 1;
 
         var pjson = require('../package.json');
-        this.respondTo(post, 'Running PaperBot in Version {0}'.format(pjson.version));
+        await this.respondTo(post, 'Running PaperBot in Version {0}'.format(pjson.version));
     }
 
-    handleUptimeCommand(post, message, tokenized) {
+    async handleUptimeCommand(post, message, tokenized) {
         this.stats.commands.uptime += 1;
 
-        this.respondTo(
+        await this.respondTo(
             post,
             'PaperBot was started {0} ({1})'.format(
                 moment(this.launch_timestamp).fromNow(),
@@ -595,26 +579,30 @@ class PaperBot {
         );
     }
 
-    handleUpdateIndexCommand(post, message, tokenized) {
+    async handleUpdateIndexCommand(post, message, tokenized) {
         this.stats.commands.updateIndex += 1;
 
         logIdx.info('Forcing index update via updateindex command');
         this.paper_index = {};
-        this.doPaperIndexUpdate()
-            .then(() => {
-                this.respondTo(post, 'Index has been updated');
-            })
-            .catch((err) => {
-                logIdx.error({ err }, 'Forced index update failed');
-                this.respondTo(post, 'Index update failed');
-            });
+
+        try {
+            await this.doPaperIndexUpdate();
+        } catch (err) {
+            logIdx.error({ err }, 'Forced index update failed');
+            await this.respondTo(post, 'Index update failed');
+            return;
+        }
+        await this.respondTo(post, 'Index has been updated');
     }
 
-    handleSearchCommand(post, message, tokenized) {
+    async handleSearchCommand(post, message, tokenized) {
         this.stats.commands.search += 1;
 
         if (tokenized.length < 2) {
-            this.respondTo(post, 'Invalid search command, see help for how to use the search.');
+            await this.respondTo(
+                post,
+                'Invalid search command, see help for how to use the search.'
+            );
             return;
         }
 
@@ -634,92 +622,90 @@ class PaperBot {
         })();
 
         logCmd.info({ type_filter: type_filter ?? 'any', keywords }, 'Executing search');
-        this.doSearch(keywords, type_filter, post);
+        await this.doSearch(keywords, type_filter, post);
     }
 
-    doSearch(keywords, type, post) {
-        this.ensurePaperIndexUpdated()
-            .then(() => {
-                const results = this.searchPapers(keywords, type);
-                const displayed_results = results.slice(0, 15);
-                const further_results = results.slice(15, 30);
+    async doSearch(keywords, type, post) {
+        try {
+            await this.ensurePaperIndexUpdated();
+        } catch (err) {
+            logIdx.error({ err }, 'Search failed due to index update failure');
+            await this.respondTo(post, 'Search failed due to an index update error');
+            return;
+        }
 
-                if (displayed_results.length == 0) {
-                    let reply = 'No results found for your search ';
-                    if (type !== undefined) {
-                        reply += 'for **{0}s**'.format(type);
-                    } else {
-                        reply += 'for all documents';
-                    }
-                    reply += ' with the keywords: *{0}*'.format(keywords.join(', '));
-                    this.respondTo(post, reply);
-                    return;
+        const results = this.searchPapers(keywords, type);
+        const displayed_results = results.slice(0, 15);
+        const further_results = results.slice(15, 30);
+
+        if (displayed_results.length == 0) {
+            let reply = 'No results found for your search ';
+            if (type !== undefined) {
+                reply += 'for **{0}s**'.format(type);
+            } else {
+                reply += 'for all documents';
+            }
+            reply += ' with the keywords: *{0}*'.format(keywords.join(', '));
+            await this.respondTo(post, reply);
+            return;
+        }
+
+        const result_list = displayed_results
+            .map((result) => {
+                this.stats.formattings_requested += 1;
+
+                try {
+                    const formatted_result = '1. {0}'.format(
+                        this.message_formatter_factory
+                            .createFromInfo(...this.getPaperInfoByRef(result['id']))
+                            .formatMessage()
+                    );
+                    this.stats.formattings_done += 1;
+                    return formatted_result;
+                } catch (err) {
+                    this.stats.formatting_errors += 1;
+                    logFmt.warn({ err, id: result?.id }, 'Error formatting search result');
+                    return '*Error formatting response for {0}*'.format(result?.id ?? 'unknown');
                 }
-
-                const result_list = displayed_results
-                    .map((result) => {
-                        this.stats.formattings_requested += 1;
-
-                        try {
-                            const formatted_result = '1. {0}'.format(
-                                this.message_formatter_factory
-                                    .createFromInfo(...this.getPaperInfoByRef(result['id']))
-                                    .formatMessage()
-                            );
-                            this.stats.formattings_done += 1;
-                            return formatted_result;
-                        } catch (err) {
-                            this.stats.formatting_errors += 1;
-                            logFmt.warn({ err, id: result?.id }, 'Error formatting search result');
-                            return '*Error formatting response for {0}*'.format(
-                                result?.id ?? 'unknown'
-                            );
-                        }
-                    })
-                    .join('\n');
-
-                let reply =
-                    results.length != 1 ? 'Found {0} results'.format(results.length) : '1 result';
-                reply += ' for your search ';
-                if (type !== undefined) {
-                    reply += 'for **{0}s**'.format(type);
-                } else {
-                    reply += 'for all documents';
-                }
-                reply += ' with the keywords: *{0}*'.format(keywords.join(', '));
-
-                if (results.length != displayed_results.length) {
-                    reply += ', showing most recent {0} documents'.format(displayed_results.length);
-                }
-                reply += ':\n' + result_list;
-
-                let shortLink = (id) => {
-                    const [reference, info] = this.getPaperInfoByRef(id);
-                    const long_link = info['long_link'];
-                    return '[{0}]({1})'.format(reference, long_link);
-                };
-
-                if (further_results.length >= 1) {
-                    const lo = displayed_results.length + 1;
-                    const hi = lo + further_results.length - 1;
-                    reply +=
-                        '\nAlso ({0}-{1}): '.format(lo, hi) +
-                        further_results.map((result) => shortLink(result['id'])).join(', ');
-                }
-
-                logCmd.info(
-                    { results: results.length, displayed: displayed_results.length },
-                    'Search completed'
-                );
-                this.respondTo(post, reply);
             })
-            .catch((err) => {
-                logIdx.error({ err }, 'Search failed due to index update failure');
-                this.respondTo(post, 'Search failed due to an index update error');
-            });
+            .join('\n');
+
+        let reply = results.length != 1 ? 'Found {0} results'.format(results.length) : '1 result';
+        reply += ' for your search ';
+        if (type !== undefined) {
+            reply += 'for **{0}s**'.format(type);
+        } else {
+            reply += 'for all documents';
+        }
+        reply += ' with the keywords: *{0}*'.format(keywords.join(', '));
+
+        if (results.length != displayed_results.length) {
+            reply += ', showing most recent {0} documents'.format(displayed_results.length);
+        }
+        reply += ':\n' + result_list;
+
+        let shortLink = (id) => {
+            const [reference, info] = this.getPaperInfoByRef(id);
+            const long_link = info['long_link'];
+            return '[{0}]({1})'.format(reference, long_link);
+        };
+
+        if (further_results.length >= 1) {
+            const lo = displayed_results.length + 1;
+            const hi = lo + further_results.length - 1;
+            reply +=
+                '\nAlso ({0}-{1}): '.format(lo, hi) +
+                further_results.map((result) => shortLink(result['id'])).join(', ');
+        }
+
+        logCmd.info(
+            { results: results.length, displayed: displayed_results.length },
+            'Search completed'
+        );
+        await this.respondTo(post, reply);
     }
 
-    handleBracketPaperRequest(post) {
+    async handleBracketPaperRequest(post) {
         this.stats.chat.interactions += 1;
 
         const paper_request_in_brackets_regex =
@@ -732,10 +718,10 @@ class PaperBot {
             { count: papers_requested.length, refs: papers_requested },
             'Bracket paper request(s)'
         );
-        this.handlePaperRequest(post, papers_requested, false);
+        await this.handlePaperRequest(post, papers_requested, false);
     }
 
-    handlePotentialPaperRequest(post) {
+    async handlePotentialPaperRequest(post) {
         this.stats.paper_requests_handled += 1;
 
         const paper_request_regex = /(?:(C|E|LE?)WG|FS|SD|N|P|D|EDIT) ?\d+(R\d+)?/gi;
@@ -745,10 +731,10 @@ class PaperBot {
             { count: papers_requested.length, refs: papers_requested },
             'Potential paper request(s)'
         );
-        this.handlePaperRequest(post, papers_requested, true);
+        await this.handlePaperRequest(post, papers_requested, true);
     }
 
-    handlePaperRequest(post, papers_requested, bot_was_mentioned) {
+    async handlePaperRequest(post, papers_requested, bot_was_mentioned) {
         let papers = papers_requested.filter(function (value, index, array) {
             return array.indexOf(value) === index;
         });
@@ -761,52 +747,53 @@ class PaperBot {
 
         this.stats.paper_requests_handled += 1;
 
-        this.ensurePaperIndexUpdated()
-            .then(() => {
-                const message = papers
-                    .map((ref) => this.getPaperInfoByRef(ref))
-                    .map(([reference, paper_info]) => {
-                        this.stats.formattings_requested += 1;
-                        try {
-                            const formatter = this.message_formatter_factory.createFromInfo(
-                                reference,
-                                paper_info
-                            );
-                            const formatted_message = formatter.formatMessage();
-                            this.stats.formattings_done += 1;
-                            return formatted_message;
-                        } catch (err) {
-                            this.stats.formatting_errors += 1;
-                            logFmt.warn({ err, reference }, 'Error formatting paper response');
-                            return '*Error formatting response for {0}*'.format(reference);
-                        }
-                    })
-                    .join('\n');
+        try {
+            await this.ensurePaperIndexUpdated();
+        } catch (err) {
+            logIdx.error({ err }, 'Paper request failed due to index update failure');
+            await this.respondTo(post, 'Paper lookup failed due to an index update error');
+            return;
+        }
 
-                logWs.info(
-                    { count: papers.length, refs: papers },
-                    'Responding to paper request(s)'
-                );
-                this.respondTo(post, message);
+        const message = papers
+            .map((ref) => this.getPaperInfoByRef(ref))
+            .map(([reference, paper_info]) => {
+                this.stats.formattings_requested += 1;
+                try {
+                    const formatter = this.message_formatter_factory.createFromInfo(
+                        reference,
+                        paper_info
+                    );
+                    const formatted_message = formatter.formatMessage();
+                    this.stats.formattings_done += 1;
+                    return formatted_message;
+                } catch (err) {
+                    this.stats.formatting_errors += 1;
+                    logFmt.warn({ err, reference }, 'Error formatting paper response');
+                    return '*Error formatting response for {0}*'.format(reference);
+                }
             })
-            .catch((err) => {
-                logIdx.error({ err }, 'Paper request failed due to index update failure');
-                this.respondTo(post, 'Paper lookup failed due to an index update error');
-            });
+            .join('\n');
+
+        logWs.info({ count: papers.length, refs: papers }, 'Responding to paper request(s)');
+        await this.respondTo(post, message);
     }
 
-    initPaperIndex() {
+    async initPaperIndex() {
         this.paper_index = {};
         logIdx.info(
             { paperIndexUrlHost: safeHost(process.env.PAPER_INDEX_URL) },
             'Initializing paper index'
         );
-        this.doPaperIndexUpdate().catch((err) => {
+        try {
+            await this.doPaperIndexUpdate();
+        } catch (err) {
             logIdx.error({ err }, 'Initial index update failed');
-        });
+            return;
+        }
     }
 
-    ensurePaperIndexUpdated() {
+    async ensurePaperIndexUpdated() {
         this.stats.index.update_checks_performed += 1;
 
         const now = new Date();
@@ -816,7 +803,7 @@ class PaperBot {
         if (!cache_expired) {
             this.stats.index.cache_hits += 1;
             logIdx.trace({ cache_age_ms: cache_age }, 'Index cache hit');
-            return Promise.resolve();
+            return;
         }
 
         this.stats.index.cache_expirations += 1;
@@ -824,58 +811,53 @@ class PaperBot {
         return this.doPaperIndexUpdate();
     }
 
-    doPaperIndexUpdate() {
+    async doPaperIndexUpdate() {
         this.stats.index.updates_triggered += 1;
 
         const url = process.env.PAPER_INDEX_URL;
         if (!url) {
             const err = new Error('PAPER_INDEX_URL is not set');
             logIdx.error({ err }, 'Cannot update index');
-            return Promise.reject(err);
+            return;
         }
 
         logIdx.info({ paperIndexUrlHost: safeHost(url) }, 'Fetching paper index');
 
-        return new Promise((resolve, reject) => {
-            fetch(url, { cache: 'default' })
-                .then((response) => {
-                    if (!response.ok) {
-                        const err = new Error(
-                            'Index fetch failed with HTTP status ' + response.status
-                        );
-                        logIdx.error({ err, status: response.status }, 'Index fetch failed');
-                        reject(err);
-                        return;
-                    }
+        let response;
+        try {
+            response = await fetch(url, { cache: 'default' });
+        } catch (err) {
+            logIdx.error({ err }, 'Index fetch error');
+            return;
+        }
 
-                    response
-                        .json()
-                        .then((index_data) => {
-                            this.stats.index.updates_successful += 1;
+        if (!response.ok) {
+            const err = new Error('Index fetch failed with HTTP status ' + response.status);
+            logIdx.error({ err, status: response.status }, 'Index fetch failed');
+            return;
+        }
 
-                            this.cache_timestamp = new Date();
-                            this.rebuildIndex(index_data);
-                            this.rebuildSearchIndex();
+        let index_data;
+        try {
+            index_data = await response.json();
+        } catch (err) {
+            logIdx.error({ err }, 'Failed to parse index JSON');
+            return;
+        }
 
-                            logIdx.info(
-                                {
-                                    refs: Object.keys(this.paper_index).length,
-                                    cache_timestamp: this.cache_timestamp.toISOString(),
-                                },
-                                'Index updated'
-                            );
-                            resolve();
-                        })
-                        .catch((err) => {
-                            logIdx.error({ err }, 'Failed to parse index JSON');
-                            reject(err);
-                        });
-                })
-                .catch((err) => {
-                    logIdx.error({ err }, 'Index fetch error');
-                    reject(err);
-                });
-        });
+        this.stats.index.updates_successful += 1;
+
+        this.cache_timestamp = new Date();
+        this.rebuildIndex(index_data);
+        this.rebuildSearchIndex();
+
+        logIdx.info(
+            {
+                refs: Object.keys(this.paper_index).length,
+                cache_timestamp: this.cache_timestamp.toISOString(),
+            },
+            'Index updated'
+        );
     }
 
     getPaperInfoByRef(ref) {
@@ -1015,8 +997,21 @@ logMain.info(
     'Starting PaperBot process'
 );
 
-let bot = new PaperBot({
+let bot = new PaperBot();
+
+const config = {
     token: process.env.MATTERMOST_TOKEN,
     apiUrl: process.env.MATTERMOST_API_URL,
     websocketUrl: process.env.MATTERMOST_WEBSOCKER_URL,
-});
+};
+bot.initChatConnection(config).then(() => {}); // FIXME: lol
+
+logMain.info(
+    {
+        hasToken: Boolean(config.token),
+        apiUrlHost: safeHost(config.apiUrl),
+        websocketUrlHost: safeHost(config.websocketUrl),
+        paperIndexUrlHost: safeHost(process.env.PAPER_INDEX_URL),
+    },
+    'PaperBot initialized'
+);
