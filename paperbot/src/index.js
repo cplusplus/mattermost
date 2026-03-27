@@ -998,33 +998,35 @@ function safeHost(url) {
     }
 }
 
-require('dotenv').config();
+(async () => {
+    require('dotenv').config();
 
-logMain.info(
-    {
-        node: process.version,
-        pid: process.pid,
-        env: process.env.NODE_ENV ?? 'unset',
-        logLevel: process.env.LOG_LEVEL ?? 'info',
-    },
-    'Starting PaperBot process'
-);
+    logMain.info(
+        {
+            node: process.version,
+            pid: process.pid,
+            env: process.env.NODE_ENV ?? 'unset',
+            logLevel: process.env.LOG_LEVEL ?? 'info',
+        },
+        'Starting PaperBot process'
+    );
 
-let bot = new PaperBot();
+    let bot = new PaperBot();
 
-const config = {
-    token: process.env.MATTERMOST_TOKEN,
-    apiUrl: process.env.MATTERMOST_API_URL,
-    websocketUrl: process.env.MATTERMOST_WEBSOCKER_URL,
-};
-bot.initChatConnection(config).then(() => {}); // FIXME: lol
+    const config = {
+        token: process.env.MATTERMOST_TOKEN,
+        apiUrl: process.env.MATTERMOST_API_URL,
+        websocketUrl: process.env.MATTERMOST_WEBSOCKER_URL,
+    };
+    await bot.initChatConnection(config);
 
-logMain.info(
-    {
-        hasToken: Boolean(config.token),
-        apiUrlHost: safeHost(config.apiUrl),
-        websocketUrlHost: safeHost(config.websocketUrl),
-        paperIndexUrlHost: safeHost(process.env.PAPER_INDEX_URL),
-    },
-    'PaperBot initialized'
-);
+    logMain.info(
+        {
+            hasToken: Boolean(config.token),
+            apiUrlHost: safeHost(config.apiUrl),
+            websocketUrlHost: safeHost(config.websocketUrl),
+            paperIndexUrlHost: safeHost(process.env.PAPER_INDEX_URL),
+        },
+        'PaperBot initialized'
+    );
+})();
