@@ -814,41 +814,58 @@ class PaperBot {
     async doPaperIndexUpdate() {
         this.stats.index.updates_triggered += 1;
 
-        const url = process.env.PAPER_INDEX_URL;
-        if (!url) {
+        const primaryUrl = process.env.PAPER_INDEX_URL;
+        if (!primaryUrl) {
             const err = new Error('PAPER_INDEX_URL is not set');
             logIdx.error({ err }, 'Cannot update index');
             return;
         }
 
-        logIdx.info({ paperIndexUrlHost: safeHost(url) }, 'Fetching paper index');
-
-        let response;
-        try {
-            response = await fetch(url, { cache: 'default' });
-        } catch (err) {
-            logIdx.error({ err }, 'Index fetch error');
+        const secondaryUrl = process.env.LEGACY_PAPER_INDEX_URL;
+        if (!secondaryUrl) {
+            const err = new Error('LEGACY_PAPER_INDEX_URL is not set');
+            logIdx.error({ err }, 'Cannot update index');
             return;
         }
 
-        if (!response.ok) {
-            const err = new Error('Index fetch failed with HTTP status ' + response.status);
-            logIdx.error({ err, status: response.status }, 'Index fetch failed');
-            return;
-        }
+        const urls = [secondaryUrl, primaryUrl];
+        logIdx.info({ paperIndexUrls: urls }, 'Fetching paper index');
 
-        let index_data;
-        try {
-            index_data = await response.json();
-        } catch (err) {
-            logIdx.error({ err }, 'Failed to parse index JSON');
-            return;
-        }
+        let updated_index = {};
+        urls.forEach(async (url) => {
+            let response;
+            try {
+                response = await fetch(url, { cache: 'default' });
+            } catch (err) {
+                logIdx.error({ err }, 'Index fetch error');
+                return;
+            }
+
+            if (!response.ok) {
+                const err = new Error('Index fetch failed with HTTP status ' + response.status);
+                logIdx.error({ err, status: response.status }, 'Index fetch failed');
+                return;
+            }
+
+            let index_data;
+            try {
+                index_data = await response.json();
+            } catch (err) {
+                logIdx.error({ err }, 'Failed to parse index JSON');
+                return;
+            }
+
+            const updated_partial_index = this.rebuildIndex(index_data);
+            Object.assign(updated_index, updated_partial_index);
+        });
 
         this.stats.index.updates_successful += 1;
-
         this.cache_timestamp = new Date();
-        this.rebuildIndex(index_data);
+
+        this.paper_index = updated_index;
+        this.stats.index.index_rebuilt += 1;
+        logIdx.info({ references: Object.keys(updated_index).length }, 'Index rebuilt');
+
         this.rebuildSearchIndex();
 
         logIdx.info(
@@ -936,11 +953,7 @@ class PaperBot {
                 updated_index[reference]['_'] = id;
             }
         });
-
-        this.paper_index = updated_index;
-        this.stats.index.index_rebuilt += 1;
-
-        logIdx.info({ references: Object.keys(updated_index).length }, 'Index rebuilt');
+        return updated_index;
     }
 
     rebuildSearchIndex() {
